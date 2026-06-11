@@ -19,6 +19,8 @@ import { parseDate } from "../../utils/parseDate";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
 import { SDMXChartConfig } from "../types";
+import { SDMXRenderError } from "../../errors";
+import { validateSeriesDimensions } from "../../utils/validateChartData";
 import { AlignValue } from "highcharts";
 import { merge } from "ts-deepmerge";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
@@ -50,6 +52,7 @@ const Chart = ({ config, language, placeholder, callback, ...props }: ChartProps
     })
 
     const [isLoading, setIsLoading] = useState(true)
+    const [renderError, setRenderError] = useState<Error | null>(null)
 
     const chartComponentRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -84,6 +87,8 @@ const Chart = ({ config, language, placeholder, callback, ...props }: ChartProps
     }
 
     useEffect(() => {
+
+        setRenderError(null)
 
         const dataObjs = parseDataExpr(config.data);
 
@@ -207,6 +212,16 @@ const Chart = ({ config, language, placeholder, callback, ...props }: ChartProps
 
                 let xAxisConcept = config.xAxisConcept;
                 let legendConcept = config?.legend?.concept || "";
+
+                // fail with a descriptive error instead of a blank panel or a
+                // misleading single merged series (see-saw plot)
+                validateSeriesDimensions(
+                    chartType,
+                    xAxisConcept || (chartType === 'line' ? 'TIME_PERIOD' : ''),
+                    legendConcept,
+                    data,
+                    dimensions
+                );
 
                 // check if colorPalette is expressed with codes or colorIndexes
                 // if colorPalette uses number, it means that it is colorIndex
@@ -614,6 +629,11 @@ const Chart = ({ config, language, placeholder, callback, ...props }: ChartProps
                 },
                 series: seriesData
             }, hcExtraOptions || {}, config.extraOptions || {}));
+        }).catch((error: Error) => {
+            // surface every data, config, and validation failure in the
+            // panel instead of leaving an eternal "Loading..." placeholder
+            setRenderError(error)
+            setIsLoading(false)
         })
     }, [config, language]);
 
@@ -625,6 +645,15 @@ const Chart = ({ config, language, placeholder, callback, ...props }: ChartProps
             containerProps={{ ...props, className: `${props.className} ${config.frame && config.frame ? "border" : ""}`}}
             callback={callback}
         />
+
+    if (renderError) {
+        const errorCode = renderError instanceof SDMXRenderError ? renderError.code : undefined
+        return (
+            <div className={`sdmx-render-error alert alert-warning ${props.className || ""}`} role="alert" data-error-code={errorCode}>
+                {renderError.message}
+            </div>
+        )
+    }
 
     return (
         <>
