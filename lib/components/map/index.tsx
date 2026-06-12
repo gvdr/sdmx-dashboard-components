@@ -31,6 +31,7 @@ import Control from 'ol/control/Control';
 import { parseDataExpr } from '../../utils/parseDataExpr';
 import { parseTextExpr } from '../../utils/parseTextExpr';
 import { SDMXFetcher, SDMXMapConfig } from '../types';
+import { SDMXRenderError, toSDMXRenderError } from '../../errors';
 import RenderFeature from 'ol/render/Feature';
 import { isISO3Code, isoCountryCode3To2 } from '../../utils/isoCountryCode';
 import { getColorSchemeFunction, getColorSchemePreview, getReadableTextColor, getTextHaloColor } from '../../utils/mapColors';
@@ -45,6 +46,7 @@ const MapComponent = ({ config, language, callback, fetcher }: { config: SDMXMap
   const [obsValueMax, setObsValueMax] = useState<number>(0)
 
   const [dimensions, setDimensions] = useState<any[]>([])
+  const [renderError, setRenderError] = useState<SDMXRenderError | null>(null)
   const [unit, setUnit] = useState<string>(config.unit?.text || '')
   const [indicatorName, setIndicatorName] = useState<string>('')
 
@@ -207,6 +209,7 @@ const MapComponent = ({ config, language, callback, fetcher }: { config: SDMXMap
 
 
   useEffect(() => {
+    setRenderError(null)
     let titleText = config.title ? 'Loading...' : '';
 
     const sdmxParser = new SDMXParser();
@@ -224,6 +227,13 @@ const MapComponent = ({ config, language, callback, fetcher }: { config: SDMXMap
       fetcher
     }).then(() => {
       const data = sdmxParser.getData();
+      if (data.length === 0) {
+        throw new SDMXRenderError(
+          'ERR_EMPTY',
+          `The data query for visual ${config.id} returned zero observations. Fix: widen the data query (e.g. broaden the filter or the period) or check that the dataflow contains data for the requested slice.`,
+          { detail: { url: dataFlowUrl } }
+        );
+      }
       const _dim = sdmxParser.getDimensions();
       const _att = sdmxParser.getAttributes();
       setDimensions(_dim)
@@ -260,6 +270,8 @@ const MapComponent = ({ config, language, callback, fetcher }: { config: SDMXMap
 
       legendElement.current!.children[0]!.innerHTML = titleText
 
+    }).catch((error: Error) => {
+      setRenderError(toSDMXRenderError(error, config.id))
     });
   }, [config, language, callback, fetcher])
 
@@ -372,7 +384,14 @@ const MapComponent = ({ config, language, callback, fetcher }: { config: SDMXMap
 
     return (
       <div className={`${config.frame ? "border" : "" }`}>
-        <div id={`map-${config.id || 'id'}`} ref={mapElement} className={`map ${styles.minCellHeight}`}></div>
+        {renderError &&
+          <div className="sdmx-render-error alert alert-warning" role="alert" data-error-code={renderError.code}>
+            {renderError.message}
+          </div>
+        }
+        {/* the map and overlay divs stay mounted on error: the OpenLayers
+            effects hold refs into them and a config change retries in place */}
+        <div id={`map-${config.id || 'id'}`} ref={mapElement} className={`map ${styles.minCellHeight}`} style={renderError ? { display: 'none' } : undefined}></div>
         <div ref={tooltipElement} className={styles.mapTooltip}>
           <div className={styles.mapTooltipHeader} id="map-tooltip-header"></div>
           <div id="map-tooltip-content"></div>

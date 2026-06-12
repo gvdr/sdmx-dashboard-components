@@ -7,6 +7,7 @@ import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
 import { SDMXFetcher, SDMXVisualConfig } from "../types";
+import { SDMXRenderError, toSDMXRenderError } from "../../errors";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
 
 
@@ -26,6 +27,7 @@ const Value = ({ config, placeholder, callback, language, fetcher, ...props }: V
     const [titleText, setTitleText] = useState<string>(config.title?'Loading...':'')
     const [subtitleText, setSubtitleText] = useState<string>(config.subtitle?'Loading...':'')
     const [isLoading, setIsLoading] = useState(true)
+    const [renderError, setRenderError] = useState<SDMXRenderError | null>(null)
 
     const sdmxParser = new SDMXParser();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -128,6 +130,7 @@ const Value = ({ config, placeholder, callback, language, fetcher, ...props }: V
     }
 
     useEffect(() => {
+        setRenderError(null)
         const dataObjs = parseDataExpr(config.data);
         if (dataObjs.length > 1) {
             throw new Error('Multiple data expressions are not supported for Value component');
@@ -144,6 +147,13 @@ const Value = ({ config, placeholder, callback, language, fetcher, ...props }: V
             fetcher
         }).then(() => {
             const data = sdmxParser.getData();
+            if (data.length === 0) {
+                throw new SDMXRenderError(
+                    'ERR_EMPTY',
+                    `The data query for visual ${config.id} returned zero observations. Fix: widen the data query (e.g. broaden the filter or the period) or check that the dataflow contains data for the requested slice.`,
+                    { detail: { url: dataFlowUrl } }
+                );
+            }
             const dimensions = sdmxParser.getDimensions();
             const attributes = sdmxParser.getAttributes();
 
@@ -216,6 +226,9 @@ const Value = ({ config, placeholder, callback, language, fetcher, ...props }: V
             if(callback) {
                 callback(valueElement)
             }
+        }).catch((error: Error) => {
+            setRenderError(toSDMXRenderError(error, config.id))
+            setIsLoading(false)
         });
     }, [language, fetcher]);
 
@@ -253,6 +266,14 @@ const Value = ({ config, placeholder, callback, language, fetcher, ...props }: V
                 {valueElement}
             </div>
         </div>
+
+    if (renderError) {
+        return (
+            <div className={`sdmx-render-error alert alert-warning ${containerClass || ""}`} role="alert" data-error-code={renderError.code}>
+                {renderError.message}
+            </div>
+        )
+    }
 
     return (
         <div

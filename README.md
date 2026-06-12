@@ -56,6 +56,26 @@ const App = () => {
 };
 ```
 
+### Error contract
+
+Every failure in a visual's data pipeline is surfaced as an `SDMXRenderError`, rendered in place of the visual with `role="alert"` and a `data-error-code` attribute. The class and its code type are exported from the package root:
+
+```typescript
+import { SDMXRenderError, SDMXRenderErrorCode } from 'sdmx-dashboard-components';
+```
+
+| Code | Meaning |
+|---|---|
+| `ERR_FETCH` | data URL unreachable or non-2xx |
+| `ERR_PARSE` | response is not parseable SDMX-JSON |
+| `ERR_EMPTY` | query returned zero observations |
+| `ERR_NO_SERIES_DIMENSION` | bar/column/lollipop chart with no varying dimension besides the x-axis |
+| `ERR_AMBIGUOUS_SERIES` | two or more varying dimensions and no `legend.concept` to disambiguate |
+| `ERR_CONCEPT_NOT_FOUND` | `xAxisConcept` or `legend.concept` missing from the dataflow structure |
+| `ERR_ENGINE` | anything escaping the charting engine (original error kept as `cause`) |
+
+Errors carry `visualId` (the `id` of the failing visual) and, where useful, a structured `detail` object (for `ERR_CONCEPT_NOT_FOUND` it lists the available concepts; for the series-structure codes it lists the varying dimensions with their value counts). The message wording is part of the public contract and is covered by unit tests: messages name the failing concepts and state concrete fixes, so an agent or a helpful UI can correct the configuration in one step.
+
 ### Custom data transport
 
 All components accept an optional `fetcher` prop with the signature of the global `fetch` (`(url, init?) => Promise<Response>`). When provided, every request made by the library (the dashboard configuration and all SDMX data queries) goes through it, so the integrating application can add authentication headers, route requests through a proxy, or apply caching and retries without touching the global `fetch`. When absent, the global `fetch` is used.

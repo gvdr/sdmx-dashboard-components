@@ -58,7 +58,7 @@ export const validateSeriesDimensions = (
         throw new SDMXRenderError(
             'ERR_NO_SERIES_DIMENSION',
             `Chart type=${chartType} with xAxis=${xAxisConcept} needs at least one other varying dimension to group bars/columns. Only ${xAxisConcept} varies in this query. Fix: switch chart type to line or pie, widen the data query so a second dimension varies (e.g. remove lastNObservations or broaden the filter), or set legend.concept to a dimension with multiple values.`,
-            { chartType, xAxisConcept, varyingDimensions: [] }
+            { detail: { chartType, xAxisConcept, varyingDimensions: [] } }
         );
     }
 
@@ -69,7 +69,7 @@ export const validateSeriesDimensions = (
         throw new SDMXRenderError(
             'ERR_AMBIGUOUS_SERIES',
             `Chart type=${chartType} with xAxis=${xAxisConcept} has ${varying.length} other varying dimensions: ${varyingList}. Their observations would be merged into a single series, rendering an artefact instead of the data. Fix: set legend.concept to one of the varying dimensions, or narrow the data query so that only one dimension besides ${xAxisConcept} varies.`,
-            { chartType, xAxisConcept, varyingDimensions: varying }
+            { detail: { chartType, xAxisConcept, varyingDimensions: varying } }
         );
     }
 }

@@ -19,7 +19,7 @@ import { parseDate } from "../../utils/parseDate";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
 import { SDMXChartConfig, SDMXFetcher } from "../types";
-import { SDMXRenderError } from "../../errors";
+import { SDMXRenderError, toSDMXRenderError } from "../../errors";
 import { validateSeriesDimensions } from "../../utils/validateChartData";
 import { AlignValue } from "highcharts";
 import { merge } from "ts-deepmerge";
@@ -120,6 +120,13 @@ const Chart = ({ config, language, placeholder, callback, fetcher, ...props }: C
                 fetcher
             }).then(() => {
                 let data = parser.getData();
+                if (data.length === 0) {
+                    throw new SDMXRenderError(
+                        'ERR_EMPTY',
+                        `The data query for visual ${config.id} returned zero observations. Fix: widen the data query (e.g. broaden the filter or the period) or check that the dataflow contains data for the requested slice.`,
+                        { detail: { url: dataObj.dataFlowUrl } }
+                    );
+                }
                 const attributes = parser.getAttributes();
                 // if alternate label specified in the DATA field, the label is appended to the data with key xAxisConcept
                 if (dataObj.alternateLabel) {
@@ -197,18 +204,27 @@ const Chart = ({ config, language, placeholder, callback, fetcher, ...props }: C
                     subtitleText = typeof config.subtitle.text == 'string'? parseTextExpr(config.subtitle.text, dimensions) : parseTextExpr(config.subtitle.text[language], dimensions)
                 }
 
+                const availableConcepts = dimensions.map((dimension: any) => dimension.id);
                 // check if xAxisConcept exists in data
                 if (config.xAxisConcept && config.xAxisConcept !== 'MULTI') {
                     const xAxisDimension = dimensions.find((dimension: any) => dimension.id === config.xAxisConcept);
                     if (!xAxisDimension) {
-                        throw new Error(`xAxisConcept ${config.xAxisConcept} not found in dataflow`);
+                        throw new SDMXRenderError(
+                            'ERR_CONCEPT_NOT_FOUND',
+                            `xAxisConcept ${config.xAxisConcept} not found in the dataflow. Available concepts: ${availableConcepts.join(', ')}. Fix: set xAxisConcept to one of the available concepts.`,
+                            { detail: { concept: config.xAxisConcept, role: 'xAxisConcept', available: availableConcepts } }
+                        );
                     }
                 }
                 // check if legendConcept exists in dataFlow
                 if (config.legend && config.legend.concept && config.legend.concept !== 'MULTI') {
                     const legendDimension = dimensions.find((dimension: any) => dimension.id === config?.legend?.concept);
                     if (!legendDimension) {
-                        throw new Error(`legendConcept ${config.legend.concept} not found in dataflow`);
+                        throw new SDMXRenderError(
+                            'ERR_CONCEPT_NOT_FOUND',
+                            `legendConcept ${config.legend.concept} not found in the dataflow. Available concepts: ${availableConcepts.join(', ')}. Fix: set legend.concept to one of the available concepts.`,
+                            { detail: { concept: config.legend.concept, role: 'legend.concept', available: availableConcepts } }
+                        );
                     }
                 }
 
@@ -602,7 +618,19 @@ const Chart = ({ config, language, placeholder, callback, fetcher, ...props }: C
 
             setHcOptions(merge({
                 chart: {
-                    type: chartType === 'drilldown' ? 'column' : chartType
+                    type: chartType === 'drilldown' ? 'column' : chartType,
+                    events: {
+                        // engine-internal failures (e.g. Highcharts error #14
+                        // on string data) re-surface as typed errors instead
+                        // of raw console output
+                        displayError: function (this: any, e: any) {
+                            setRenderError(new SDMXRenderError(
+                                'ERR_ENGINE',
+                                `The charting engine failed while rendering visual ${config.id}${e?.code !== undefined ? ` (engine error ${e.code})` : ''}. Fix: check that observation values are numeric and that extraOptions, if set, are valid for the chart type.`,
+                                { visualId: config.id, detail: { engineErrorCode: e?.code }, cause: e }
+                            ))
+                        }
+                    }
                 },
                 title: {
                     useHTML: true,
@@ -634,7 +662,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, ...props }: C
         }).catch((error: Error) => {
             // surface every data, config, and validation failure in the
             // panel instead of leaving an eternal "Loading..." placeholder
-            setRenderError(error)
+            setRenderError(toSDMXRenderError(error, config.id))
             setIsLoading(false)
         })
     }, [config, language, fetcher]);
