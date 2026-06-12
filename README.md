@@ -119,6 +119,25 @@ const proxyFetcher = (url, init) =>
 
 Routing the SDMX data queries through the fetcher requires an sdmx-json-parser version whose `getDatasets` accepts the `fetcher` option; on older parser versions the data queries fall back to the global `fetch`. The GeoJSON layers of `SDMXMap` are loaded by OpenLayers and do not go through the fetcher.
 
+### Request dedup, caching, retry, and telemetry
+
+The library wraps its data requests in a transport layer, on top of the provided `fetcher` or the global `fetch`:
+
+- identical in-flight URLs across the visuals of a dashboard share one network request;
+- responses are cached for the lifetime of the rendered config (a config or language change invalidates);
+- network errors and 5xx responses are retried once with a short backoff, 4xx fails immediately.
+
+Operators can observe endpoint behaviour through the `onDataFetch` callback, available on the dashboard and the standalone components:
+
+```typescript
+<SDMXDashboard
+  config={config}
+  onDataFetch={(t: FetchTelemetry) => void} // { url, host, status, durationMs, fromCache, retried }
+/>
+```
+
+It fires once per settled request, including deduplicated cache hits (`fromCache: true`), with no double counting of the underlying network exchange.
+
 ### Highcharts Styled Mode
 
 The user can also make use of all the Highcharts options passing them as props to the components with the `extraOptions` parameter of the config object.

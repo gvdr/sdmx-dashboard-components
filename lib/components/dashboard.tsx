@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 
 import Cell from './cell';
 import Text from './text';
@@ -7,20 +7,35 @@ import Text from './text';
 import '../global.module.css';
 import { SDMXDashboardConfig, SDMXFetcher, VisualRenderStatus } from './types';
 import { SDMXRenderError } from '../errors';
+import { createTransport, FetchTelemetry } from '../utils/transport';
 
-const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", fetcher, onVisualRender, onRenderComplete, renderLoading, renderEmpty, renderError }: {
+const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", fetcher, onVisualRender, onRenderComplete, onDataFetch, renderLoading, renderEmpty, renderError }: {
     url?: string,
     config?: SDMXDashboardConfig,
     lang?: string,
     fetcher?: SDMXFetcher,
     onVisualRender?: (status: VisualRenderStatus) => void,
     onRenderComplete?: (all: VisualRenderStatus[]) => void,
+    onDataFetch?: (telemetry: FetchTelemetry) => void,
     renderLoading?: (visualId: string) => React.ReactNode,
     renderEmpty?: (visualId: string) => React.ReactNode,
     renderError?: (error: SDMXRenderError) => React.ReactNode
 }) => {
 
     const [pageData, setPageData] = useState<SDMXDashboardConfig>();
+
+    const onDataFetchRef = useRef(onDataFetch);
+    useEffect(() => {
+        onDataFetchRef.current = onDataFetch;
+    }, [onDataFetch]);
+    // one transport per rendered config and language: visuals of the same
+    // dashboard share identical in-flight requests and the response cache,
+    // and a config or language change invalidates both
+    const transport = useMemo(
+        () => createTransport(fetcher, (telemetry) => onDataFetchRef.current?.(telemetry)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [pageData, lang, fetcher]
+    );
 
     // lifecycle tracking, keyed by the rendered config and language so a new
     // config or language restarts the aggregation; initialised lazily inside
@@ -128,7 +143,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
                     <div key={`row-${index_row}`} className="row mb-3 display-flex">
                       {
                         row.columns.map((cell: any) => (
-                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={fetcher} onVisualRender={handleVisualRender} renderLoading={renderLoading} renderEmpty={renderEmpty} renderError={renderError} />
+                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={transport} onVisualRender={handleVisualRender} renderLoading={renderLoading} renderEmpty={renderEmpty} renderError={renderError} />
                         ))
                       }
                     </div>

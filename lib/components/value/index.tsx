@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import parse from "html-react-parser";
 import { parseOperandTextExpr, parseTextExpr } from '../../utils/parseTextExpr';
 // @ts-ignore
@@ -9,6 +9,7 @@ import { Button } from "react-bootstrap";
 import { SDMXFetcher, SDMXVisualConfig, VisualRenderStatus } from "../types";
 import { SDMXRenderError, toSDMXRenderError } from "../../errors";
 import { computeRenderStats } from "../../utils/renderStats";
+import { createTransport, FetchTelemetry } from "../../utils/transport";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
 
 
@@ -20,12 +21,13 @@ interface ValueProps extends React.HTMLAttributes<HTMLDivElement> {
     language: string;
     fetcher?: SDMXFetcher;
     onVisualRender?: (status: VisualRenderStatus) => void;
+    onDataFetch?: (telemetry: FetchTelemetry) => void;
     renderLoading?: (visualId: string) => React.ReactNode;
     renderEmpty?: (visualId: string) => React.ReactNode;
     renderError?: (error: SDMXRenderError) => React.ReactNode;
 }
 
-const Value = ({ config, placeholder, callback, language, fetcher, onVisualRender, renderLoading, renderEmpty, renderError: renderErrorSlot, ...props }: ValueProps) => {
+const Value = ({ config, placeholder, callback, language, fetcher, onVisualRender, onDataFetch, renderLoading, renderEmpty, renderError: renderErrorSlot, ...props }: ValueProps) => {
 
     const [valueElement, setValueElement] = useState(<span>Loading...</span>)
     const [popupStr, setPopupStr] = useState<string>("")
@@ -46,6 +48,18 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
     const reportRenderStatus = (status: VisualRenderStatus) => {
         onVisualRenderRef.current?.(status);
     }
+
+    const onDataFetchRef = useRef(onDataFetch);
+    useEffect(() => {
+        onDataFetchRef.current = onDataFetch;
+    }, [onDataFetch]);
+    // dedup, cache, and retry per rendered config; a dashboard-provided
+    // transport passes through unchanged so visuals share its cache
+    const transport = useMemo(
+        () => createTransport(fetcher, (telemetry) => onDataFetchRef.current?.(telemetry)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [config, language, fetcher]
+    );
 
     // className is applied to container div
     // style is applied to value div
@@ -160,7 +174,7 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
                 Accept: "application/vnd.sdmx.data+json;version=2.0.0",
                 "Accept-Language": language
             }),
-            fetcher
+            fetcher: transport
         }).then(() => {
             const data = sdmxParser.getData();
             if (data.length === 0) {
@@ -197,7 +211,7 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
                             const expr = parseExpr(`x0 ${dataObj.exprOperator} x1`, new EvalAstFactory());
                             const scope: Scope = {x0: item.value}
                             if (isNaN(parseInt(dataObj.exprOperand))) {
-                                const dataPromises = fetchDataExprOperand([dataObj.exprOperand], data, scope, attributes, language, fetcher)
+                                const dataPromises = fetchDataExprOperand([dataObj.exprOperand], data, scope, attributes, language, transport)
                                 Promise.all(dataPromises).then(() => {
                                     Object.keys(scope).forEach((key: string) => {
                                         if (Array.isArray(scope[key])) {
@@ -218,7 +232,7 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
                     setPopupStr(countData.map((item: any) => item[config.xAxisConcept]).join(', '))
                 } else if (dataObj.operator === "expr") {
                     const scope: Scope = {x0: valueStr}
-                    const dataPromises = fetchDataExprOperand(dataObj.exprOperand, data, scope, attributes, language, fetcher)
+                    const dataPromises = fetchDataExprOperand(dataObj.exprOperand, data, scope, attributes, language, transport)
                     Promise.all(dataPromises).then(() => {
                         const astFactory = new EvalAstFactory();
                         const expr = parseExpr(dataObj.expression, astFactory);

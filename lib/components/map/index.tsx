@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 // @ts-ignore
 import { SDMXParser } from 'sdmx-json-parser';
 
@@ -33,18 +33,20 @@ import { parseTextExpr } from '../../utils/parseTextExpr';
 import { SDMXFetcher, SDMXMapConfig, VisualRenderStatus } from '../types';
 import { SDMXRenderError, toSDMXRenderError } from '../../errors';
 import { computeRenderStats } from '../../utils/renderStats';
+import { createTransport, FetchTelemetry } from '../../utils/transport';
 import RenderFeature from 'ol/render/Feature';
 import { isISO3Code, isoCountryCode3To2 } from '../../utils/isoCountryCode';
 import { getColorSchemeFunction, getColorSchemePreview, getReadableTextColor, getTextHaloColor } from '../../utils/mapColors';
 
 type MapDataLayer = VectorLayer<VectorSource> | VectorTileLayer
 
-const MapComponent = ({ config, language, callback, fetcher, onVisualRender, renderEmpty, renderError: renderErrorSlot }: {
+const MapComponent = ({ config, language, callback, fetcher, onVisualRender, onDataFetch, renderEmpty, renderError: renderErrorSlot }: {
   config: SDMXMapConfig,
   language: string,
   callback?: (map: Map) => void,
   fetcher?: SDMXFetcher,
   onVisualRender?: (status: VisualRenderStatus) => void,
+  onDataFetch?: (telemetry: FetchTelemetry) => void,
   renderEmpty?: (visualId: string) => React.ReactNode,
   renderError?: (error: SDMXRenderError) => React.ReactNode
 }) => {
@@ -66,6 +68,18 @@ const MapComponent = ({ config, language, callback, fetcher, onVisualRender, ren
   const reportRenderStatus = (status: VisualRenderStatus) => {
     onVisualRenderRef.current?.(status);
   }
+
+  const onDataFetchRef = useRef(onDataFetch);
+  useEffect(() => {
+    onDataFetchRef.current = onDataFetch;
+  }, [onDataFetch]);
+  // dedup, cache, and retry per rendered config; a dashboard-provided
+  // transport passes through unchanged so visuals share its cache
+  const transport = useMemo(
+    () => createTransport(fetcher, (telemetry) => onDataFetchRef.current?.(telemetry)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [config, language, fetcher]
+  );
   const [unit, setUnit] = useState<string>(config.unit?.text || '')
   const [indicatorName, setIndicatorName] = useState<string>('')
 
@@ -244,7 +258,7 @@ const MapComponent = ({ config, language, callback, fetcher, onVisualRender, ren
         Accept: "application/vnd.sdmx.data+json;version=2.0.0",
         "Accept-Language": language
       }),
-      fetcher
+      fetcher: transport
     }).then(() => {
       const data = sdmxParser.getData();
       if (data.length === 0) {

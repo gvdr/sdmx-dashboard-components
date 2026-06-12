@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { HighchartsReact } from "highcharts-react-official";
 import Highcharts from 'highcharts';
 import highchartsMore from "highcharts/highcharts-more";
@@ -23,6 +23,7 @@ import { SDMXRenderError, toSDMXRenderError } from "../../errors";
 import { validateSeriesDimensions } from "../../utils/validateChartData";
 import { computeRenderStats } from "../../utils/renderStats";
 import { observeContainerResize } from "../../utils/observeContainerResize";
+import { createTransport, FetchTelemetry } from "../../utils/transport";
 import { AlignValue } from "highcharts";
 import { merge } from "ts-deepmerge";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
@@ -45,13 +46,14 @@ interface ChartProps extends HighchartsReact.Props {
     callback?: (chart: Highcharts.Chart) => void;
     fetcher?: SDMXFetcher;
     onVisualRender?: (status: VisualRenderStatus) => void;
+    onDataFetch?: (telemetry: FetchTelemetry) => void;
     renderLoading?: (visualId: string) => React.ReactNode;
     renderEmpty?: (visualId: string) => React.ReactNode;
     renderError?: (error: SDMXRenderError) => React.ReactNode;
     autoResize?: boolean;
 }
 
-const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, renderLoading, renderEmpty, renderError: renderErrorSlot, autoResize = true, ...props }: ChartProps) => {
+const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, onDataFetch, renderLoading, renderEmpty, renderError: renderErrorSlot, autoResize = true, ...props }: ChartProps) => {
 
     const [hcOptions, setHcOptions] = useState<Highcharts.Options>({
         title: {
@@ -73,6 +75,18 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
     const reportRenderStatus = (status: VisualRenderStatus) => {
         onVisualRenderRef.current?.(status);
     }
+
+    const onDataFetchRef = useRef(onDataFetch);
+    useEffect(() => {
+        onDataFetchRef.current = onDataFetch;
+    }, [onDataFetch]);
+    // dedup, cache, and retry per rendered config; a dashboard-provided
+    // transport passes through unchanged so visuals share its cache
+    const transport = useMemo(
+        () => createTransport(fetcher, (telemetry) => onDataFetchRef.current?.(telemetry)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [config, language, fetcher]
+    );
 
     // re-measure when the container resizes without a window resize event
     // (sidebars opening, preview panes dragging, CSS transitions); the
@@ -151,7 +165,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                     Accept: "application/vnd.sdmx.data+json;version=2.0.0",
                     "Accept-Language": language
                 }),
-                fetcher
+                fetcher: transport
             }).then(() => {
                 let data = parser.getData();
                 if (data.length === 0) {
@@ -198,7 +212,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
 
                     } else if (dataObj.operator === "expr") {
                         const scope: Scope = {x0: data.map((item: any) => item.value)}
-                        const dataPromises = fetchDataExprOperand(dataObj.exprOperand, data, scope, attributes, language, fetcher)
+                        const dataPromises = fetchDataExprOperand(dataObj.exprOperand, data, scope, attributes, language, transport)
                         return Promise.all(dataPromises).then(() => {
                             const astFactory = new EvalAstFactory();
                             const expr = parseExpr(dataObj.expression, astFactory);
