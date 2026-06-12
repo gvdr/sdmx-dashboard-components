@@ -1,6 +1,22 @@
+import { SDMXRenderError } from '../errors';
+
 // drop-in replacement for the global fetch; lets consumers add
 // authentication, proxying, caching, or retries to every data request
 export type SDMXFetcher = (url: string, init?: RequestInit) => Promise<Response>;
+
+// per-visual render state reported through onVisualRender/onRenderComplete;
+// `stats` lets a consumer judge substantive quality ("rendered, but one
+// series and two observations") without inspecting the DOM
+export type VisualRenderStatus = {
+    visualId: string,
+    status: "loading" | "rendered" | "empty" | "error",
+    error?: SDMXRenderError, // when status === "error" or "empty"
+    stats?: { // when status === "rendered"
+        observationCount: number,
+        seriesCount: number,
+        timePeriodRange?: [string, string]
+    }
+}
 
 export type SDMXTextConfig = {
     size?: string, // size of the text as in font-size css property

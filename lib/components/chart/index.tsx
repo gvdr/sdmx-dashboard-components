@@ -18,9 +18,10 @@ import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { parseDate } from "../../utils/parseDate";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
-import { SDMXChartConfig, SDMXFetcher } from "../types";
+import { SDMXChartConfig, SDMXFetcher, VisualRenderStatus } from "../types";
 import { SDMXRenderError, toSDMXRenderError } from "../../errors";
 import { validateSeriesDimensions } from "../../utils/validateChartData";
+import { computeRenderStats } from "../../utils/renderStats";
 import { AlignValue } from "highcharts";
 import { merge } from "ts-deepmerge";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
@@ -42,9 +43,10 @@ interface ChartProps extends HighchartsReact.Props {
     placeholder?: React.JSX.Element;
     callback?: (chart: Highcharts.Chart) => void;
     fetcher?: SDMXFetcher;
+    onVisualRender?: (status: VisualRenderStatus) => void;
 }
 
-const Chart = ({ config, language, placeholder, callback, fetcher, ...props }: ChartProps) => {
+const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, ...props }: ChartProps) => {
 
     const [hcOptions, setHcOptions] = useState<Highcharts.Options>({
         title: {
@@ -56,6 +58,16 @@ const Chart = ({ config, language, placeholder, callback, fetcher, ...props }: C
     const [renderError, setRenderError] = useState<Error | null>(null)
 
     const chartComponentRef = useRef<HighchartsReact.RefObject>(null);
+
+    // read through a ref so an inline callback prop does not re-trigger the
+    // data effect on every parent render
+    const onVisualRenderRef = useRef(onVisualRender);
+    useEffect(() => {
+        onVisualRenderRef.current = onVisualRender;
+    }, [onVisualRender]);
+    const reportRenderStatus = (status: VisualRenderStatus) => {
+        onVisualRenderRef.current?.(status);
+    }
 
     const sortByDimension = (data: any, dimensionId: string) => {
 
@@ -90,6 +102,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, ...props }: C
     useEffect(() => {
 
         setRenderError(null)
+        reportRenderStatus({ visualId: config.id, status: 'loading' })
 
         const dataObjs = parseDataExpr(config.data);
 
@@ -187,11 +200,13 @@ const Chart = ({ config, language, placeholder, callback, fetcher, ...props }: C
         });
         let titleText = config.title?'Loading...':'';
         let subtitleText = config.subtitle?'Loading...':'';
+        let allRows: any[] = [];
         Promise.all(dataPromises).then((sdmxObjs) => {
             sdmxObjs.forEach((sdmxObj: any) => {
                 const data = sdmxObj[0];
                 const dimensions = sdmxObj[1];
                 const activeDimensions = sdmxObj[2];
+                allRows = allRows.concat(data);
 
                 if(typeof config.title == 'string') {
                     titleText = parseTextExpr(config.title, dimensions)
@@ -659,11 +674,23 @@ const Chart = ({ config, language, placeholder, callback, fetcher, ...props }: C
                 },
                 series: seriesData
             }, hcExtraOptions || {}, config.extraOptions || {}));
+
+            reportRenderStatus({
+                visualId: config.id,
+                status: 'rendered',
+                stats: computeRenderStats(allRows, seriesData.length)
+            })
         }).catch((error: Error) => {
             // surface every data, config, and validation failure in the
             // panel instead of leaving an eternal "Loading..." placeholder
-            setRenderError(toSDMXRenderError(error, config.id))
+            const renderError = toSDMXRenderError(error, config.id)
+            setRenderError(renderError)
             setIsLoading(false)
+            reportRenderStatus({
+                visualId: config.id,
+                status: renderError.code === 'ERR_EMPTY' ? 'empty' : 'error',
+                error: renderError
+            })
         })
     }, [config, language, fetcher]);
 

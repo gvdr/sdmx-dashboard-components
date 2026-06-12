@@ -6,8 +6,9 @@ import { SDMXParser } from 'sdmx-json-parser';
 import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
-import { SDMXFetcher, SDMXVisualConfig } from "../types";
+import { SDMXFetcher, SDMXVisualConfig, VisualRenderStatus } from "../types";
 import { SDMXRenderError, toSDMXRenderError } from "../../errors";
+import { computeRenderStats } from "../../utils/renderStats";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
 
 
@@ -18,9 +19,10 @@ interface ValueProps extends React.HTMLAttributes<HTMLDivElement> {
     callback?: (value: React.JSX.Element) => void;
     language: string;
     fetcher?: SDMXFetcher;
+    onVisualRender?: (status: VisualRenderStatus) => void;
 }
 
-const Value = ({ config, placeholder, callback, language, fetcher, ...props }: ValueProps) => {
+const Value = ({ config, placeholder, callback, language, fetcher, onVisualRender, ...props }: ValueProps) => {
 
     const [valueElement, setValueElement] = useState(<span>Loading...</span>)
     const [popupStr, setPopupStr] = useState<string>("")
@@ -31,6 +33,16 @@ const Value = ({ config, placeholder, callback, language, fetcher, ...props }: V
 
     const sdmxParser = new SDMXParser();
     const containerRef = useRef<HTMLDivElement>(null);
+
+    // read through a ref so an inline callback prop does not re-trigger the
+    // data effect on every parent render
+    const onVisualRenderRef = useRef(onVisualRender);
+    useEffect(() => {
+        onVisualRenderRef.current = onVisualRender;
+    }, [onVisualRender]);
+    const reportRenderStatus = (status: VisualRenderStatus) => {
+        onVisualRenderRef.current?.(status);
+    }
 
     // className is applied to container div
     // style is applied to value div
@@ -131,6 +143,7 @@ const Value = ({ config, placeholder, callback, language, fetcher, ...props }: V
 
     useEffect(() => {
         setRenderError(null)
+        reportRenderStatus({ visualId: config.id, status: 'loading' })
         const dataObjs = parseDataExpr(config.data);
         if (dataObjs.length > 1) {
             throw new Error('Multiple data expressions are not supported for Value component');
@@ -223,12 +236,23 @@ const Value = ({ config, placeholder, callback, language, fetcher, ...props }: V
             }
             
             setIsLoading(false)
+            reportRenderStatus({
+                visualId: config.id,
+                status: 'rendered',
+                stats: computeRenderStats(data, 1)
+            })
             if(callback) {
                 callback(valueElement)
             }
         }).catch((error: Error) => {
-            setRenderError(toSDMXRenderError(error, config.id))
+            const valueError = toSDMXRenderError(error, config.id)
+            setRenderError(valueError)
             setIsLoading(false)
+            reportRenderStatus({
+                visualId: config.id,
+                status: valueError.code === 'ERR_EMPTY' ? 'empty' : 'error',
+                error: valueError
+            })
         });
     }, [language, fetcher]);
 

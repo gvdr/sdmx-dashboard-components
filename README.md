@@ -76,6 +76,21 @@ import { SDMXRenderError, SDMXRenderErrorCode } from 'sdmx-dashboard-components'
 
 Errors carry `visualId` (the `id` of the failing visual) and, where useful, a structured `detail` object (for `ERR_CONCEPT_NOT_FOUND` it lists the available concepts; for the series-structure codes it lists the varying dimensions with their value counts). The message wording is part of the public contract and is covered by unit tests: messages name the failing concepts and state concrete fixes, so an agent or a helpful UI can correct the configuration in one step.
 
+### Render lifecycle
+
+Consumers that need to know when a dashboard is ready (live previews, PDF export, agent feedback loops) can observe render state instead of polling the DOM:
+
+```typescript
+<SDMXDashboard
+  config={config}
+  lang="en"
+  onVisualRender={(s: VisualRenderStatus) => void}      // fires per visual, on every state change
+  onRenderComplete={(all: VisualRenderStatus[]) => void} // fires once per config when no visual is loading
+/>
+```
+
+Each `VisualRenderStatus` carries the `visualId`, a `status` of `loading`, `rendered`, `empty`, or `error`, the `SDMXRenderError` when failed, and on success a `stats` block (`observationCount`, `seriesCount`, `timePeriodRange`) that lets a consumer judge whether a technically successful render is substantively thin. `onRenderComplete` fires exactly once per config change, after the last visual settles, including the case where every visual fails. The standalone `SDMXChart`, `SDMXValue`, and `SDMXMap` accept `onVisualRender` as well. Both callbacks are optional.
+
 ### Custom data transport
 
 All components accept an optional `fetcher` prop with the signature of the global `fetch` (`(url, init?) => Promise<Response>`). When provided, every request made by the library (the dashboard configuration and all SDMX data queries) goes through it, so the integrating application can add authentication headers, route requests through a proxy, or apply caching and retries without touching the global `fetch`. When absent, the global `fetch` is used.

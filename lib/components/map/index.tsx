@@ -30,15 +30,16 @@ import styles from './styles.module.css';
 import Control from 'ol/control/Control';
 import { parseDataExpr } from '../../utils/parseDataExpr';
 import { parseTextExpr } from '../../utils/parseTextExpr';
-import { SDMXFetcher, SDMXMapConfig } from '../types';
+import { SDMXFetcher, SDMXMapConfig, VisualRenderStatus } from '../types';
 import { SDMXRenderError, toSDMXRenderError } from '../../errors';
+import { computeRenderStats } from '../../utils/renderStats';
 import RenderFeature from 'ol/render/Feature';
 import { isISO3Code, isoCountryCode3To2 } from '../../utils/isoCountryCode';
 import { getColorSchemeFunction, getColorSchemePreview, getReadableTextColor, getTextHaloColor } from '../../utils/mapColors';
 
 type MapDataLayer = VectorLayer<VectorSource> | VectorTileLayer
 
-const MapComponent = ({ config, language, callback, fetcher }: { config: SDMXMapConfig, language: string, callback?: (map: Map) => void, fetcher?: SDMXFetcher }) => {
+const MapComponent = ({ config, language, callback, fetcher, onVisualRender }: { config: SDMXMapConfig, language: string, callback?: (map: Map) => void, fetcher?: SDMXFetcher, onVisualRender?: (status: VisualRenderStatus) => void }) => {
   // set intial state - used to track references to OpenLayers
   //  objects for use in hooks, event handlers, etc.
   const [featuresLayer, setFeaturesLayer] = useState<MapDataLayer>()
@@ -47,6 +48,16 @@ const MapComponent = ({ config, language, callback, fetcher }: { config: SDMXMap
 
   const [dimensions, setDimensions] = useState<any[]>([])
   const [renderError, setRenderError] = useState<SDMXRenderError | null>(null)
+
+  // read through a ref so an inline callback prop does not re-trigger the
+  // data effect on every parent render
+  const onVisualRenderRef = useRef(onVisualRender);
+  useEffect(() => {
+    onVisualRenderRef.current = onVisualRender;
+  }, [onVisualRender]);
+  const reportRenderStatus = (status: VisualRenderStatus) => {
+    onVisualRenderRef.current?.(status);
+  }
   const [unit, setUnit] = useState<string>(config.unit?.text || '')
   const [indicatorName, setIndicatorName] = useState<string>('')
 
@@ -210,6 +221,7 @@ const MapComponent = ({ config, language, callback, fetcher }: { config: SDMXMap
 
   useEffect(() => {
     setRenderError(null)
+    reportRenderStatus({ visualId: config.id, status: 'loading' })
     let titleText = config.title ? 'Loading...' : '';
 
     const sdmxParser = new SDMXParser();
@@ -270,8 +282,19 @@ const MapComponent = ({ config, language, callback, fetcher }: { config: SDMXMap
 
       legendElement.current!.children[0]!.innerHTML = titleText
 
+      reportRenderStatus({
+        visualId: config.id,
+        status: 'rendered',
+        stats: computeRenderStats(data, 1)
+      })
     }).catch((error: Error) => {
-      setRenderError(toSDMXRenderError(error, config.id))
+      const mapError = toSDMXRenderError(error, config.id)
+      setRenderError(mapError)
+      reportRenderStatus({
+        visualId: config.id,
+        status: mapError.code === 'ERR_EMPTY' ? 'empty' : 'error',
+        error: mapError
+      })
     });
   }, [config, language, callback, fetcher])
 

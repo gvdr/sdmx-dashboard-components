@@ -1,15 +1,60 @@
 import React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 import Cell from './cell';
 import Text from './text';
 
 import '../global.module.css';
-import { SDMXDashboardConfig, SDMXFetcher } from './types';
+import { SDMXDashboardConfig, SDMXFetcher, VisualRenderStatus } from './types';
 
-const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", fetcher }: { url?: string, config?: SDMXDashboardConfig, lang?: string, fetcher?: SDMXFetcher}) => {
+const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", fetcher, onVisualRender, onRenderComplete }: {
+    url?: string,
+    config?: SDMXDashboardConfig,
+    lang?: string,
+    fetcher?: SDMXFetcher,
+    onVisualRender?: (status: VisualRenderStatus) => void,
+    onRenderComplete?: (all: VisualRenderStatus[]) => void
+}) => {
 
     const [pageData, setPageData] = useState<SDMXDashboardConfig>();
+
+    // lifecycle tracking, keyed by the rendered config and language so a new
+    // config or language restarts the aggregation; initialised lazily inside
+    // the handler because child effects (which report first) run before any
+    // dashboard effect could reset it
+    const renderTrackingRef = useRef<{
+        key: { pageData: SDMXDashboardConfig, lang: string },
+        statuses: { [visualId: string]: VisualRenderStatus },
+        completed: boolean
+    } | null>(null);
+
+    const handleVisualRender = (status: VisualRenderStatus) => {
+        onVisualRender?.(status);
+        if (!pageData) {
+            return;
+        }
+        const tracking = renderTrackingRef.current;
+        if (!tracking || tracking.key.pageData !== pageData || tracking.key.lang !== lang) {
+            renderTrackingRef.current = { key: { pageData, lang }, statuses: {}, completed: false };
+        }
+        const current = renderTrackingRef.current!;
+        current.statuses[status.visualId] = status;
+        if (current.completed) {
+            return;
+        }
+        const expectedIds = pageData.rows
+            .flatMap((row: any) => row.columns)
+            .filter((cell: any) => cell.type !== 'note')
+            .map((cell: any) => cell.id);
+        const allSettled = expectedIds.length > 0 && expectedIds.every((id: string) => {
+            const reported = current.statuses[id];
+            return reported && reported.status !== 'loading';
+        });
+        if (allSettled) {
+            current.completed = true;
+            onRenderComplete?.(expectedIds.map((id: string) => current.statuses[id]));
+        }
+    }
 
     useEffect(() => {
       if (url) {
@@ -32,6 +77,21 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
         })
       }
     }, [url, fetcher])
+
+    // a dashboard without data-bearing visuals settles immediately: there are
+    // no child reports to drive the aggregation
+    useEffect(() => {
+      if (!pageData) {
+        return;
+      }
+      const expectedIds = pageData.rows
+        .flatMap((row: any) => row.columns)
+        .filter((cell: any) => cell.type !== 'note');
+      if (expectedIds.length === 0) {
+        onRenderComplete?.([]);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pageData, lang])
 
     useEffect(() => {
       if(config) {
@@ -64,7 +124,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
                     <div key={`row-${index_row}`} className="row mb-3 display-flex">
                       {
                         row.columns.map((cell: any) => (
-                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={fetcher} />
+                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={fetcher} onVisualRender={handleVisualRender} />
                         ))
                       }
                     </div>
