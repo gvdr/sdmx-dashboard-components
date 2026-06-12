@@ -18,12 +18,13 @@ import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { parseDate } from "../../utils/parseDate";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
-import { SDMXChartConfig, SDMXFetcher, VisualRenderStatus } from "../types";
+import { SDMXChartConfig, SDMXFetcher, VisualInteraction, VisualRenderStatus } from "../types";
 import { SDMXRenderError, toSDMXRenderError } from "../../errors";
 import { validateSeriesDimensions } from "../../utils/validateChartData";
 import { computeRenderStats } from "../../utils/renderStats";
 import { observeContainerResize } from "../../utils/observeContainerResize";
 import { createTransport, FetchTelemetry } from "../../utils/transport";
+import { buildInteractionConcepts, buildSeriesConcepts } from "../../utils/interaction";
 import { AlignValue } from "highcharts";
 import { merge } from "ts-deepmerge";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
@@ -47,13 +48,14 @@ interface ChartProps extends HighchartsReact.Props {
     fetcher?: SDMXFetcher;
     onVisualRender?: (status: VisualRenderStatus) => void;
     onDataFetch?: (telemetry: FetchTelemetry) => void;
+    onUserInteraction?: (interaction: VisualInteraction) => void;
     renderLoading?: (visualId: string) => React.ReactNode;
     renderEmpty?: (visualId: string) => React.ReactNode;
     renderError?: (error: SDMXRenderError) => React.ReactNode;
     autoResize?: boolean;
 }
 
-const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, onDataFetch, renderLoading, renderEmpty, renderError: renderErrorSlot, autoResize = true, ...props }: ChartProps) => {
+const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, onDataFetch, onUserInteraction, renderLoading, renderEmpty, renderError: renderErrorSlot, autoResize = true, ...props }: ChartProps) => {
 
     const [hcOptions, setHcOptions] = useState<Highcharts.Options>({
         title: {
@@ -80,6 +82,11 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
     useEffect(() => {
         onDataFetchRef.current = onDataFetch;
     }, [onDataFetch]);
+
+    const onUserInteractionRef = useRef(onUserInteraction);
+    useEffect(() => {
+        onUserInteractionRef.current = onUserInteraction;
+    }, [onUserInteraction]);
     // dedup, cache, and retry per rendered config; a dashboard-provided
     // transport passes through unchanged so visuals share its cache
     const transport = useMemo(
@@ -236,12 +243,16 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
         let titleText = config.title?'Loading...':'';
         let subtitleText = config.subtitle?'Loading...':'';
         let allRows: any[] = [];
+        // dimension structures for the interaction handlers; charts with
+        // several datasets share one structure in practice, the last wins
+        let interactionDimensions: any[] = [];
         Promise.all(dataPromises).then((sdmxObjs) => {
             sdmxObjs.forEach((sdmxObj: any) => {
                 const data = sdmxObj[0];
                 const dimensions = sdmxObj[1];
                 const activeDimensions = sdmxObj[2];
                 allRows = allRows.concat(data);
+                interactionDimensions = dimensions;
 
                 if(typeof config.title == 'string') {
                     titleText = parseTextExpr(config.title, dimensions)
@@ -666,7 +677,38 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
 
             setIsLoading(false)
 
+            const emitInteraction = (kind: VisualInteraction['kind'], concepts: Record<string, string>, value?: number, timePeriod?: string) => {
+                const interaction: VisualInteraction = { visualId: config.id, kind, concepts };
+                if (value !== undefined && value !== null) {
+                    interaction.value = value;
+                }
+                if (timePeriod !== undefined && timePeriod !== null) {
+                    interaction.timePeriod = String(timePeriod);
+                }
+                onUserInteractionRef.current?.(interaction);
+            }
+
             setHcOptions(merge({
+                plotOptions: {
+                    series: {
+                        events: {
+                            click: function (this: any) {
+                                emitInteraction('series-click', buildSeriesConcepts(this.name, interactionDimensions));
+                            },
+                            legendItemClick: function (this: any) {
+                                emitInteraction('legend-click', buildSeriesConcepts(this.name, interactionDimensions));
+                            }
+                        },
+                        point: {
+                            events: {
+                                click: function (this: any) {
+                                    const row = this.options || {};
+                                    emitInteraction('point-click', buildInteractionConcepts(row, interactionDimensions), this.y, row.TIME_PERIOD);
+                                }
+                            }
+                        }
+                    }
+                },
                 chart: {
                     type: chartType === 'drilldown' ? 'column' : chartType,
                     events: {

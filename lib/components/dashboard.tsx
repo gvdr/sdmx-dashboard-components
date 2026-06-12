@@ -5,11 +5,11 @@ import Cell from './cell';
 import Text from './text';
 
 import '../global.module.css';
-import { SDMXDashboardConfig, SDMXFetcher, VisualRenderStatus } from './types';
+import { SDMXDashboardConfig, SDMXFetcher, VisualInteraction, VisualRenderStatus } from './types';
 import { SDMXRenderError } from '../errors';
 import { createTransport, FetchTelemetry } from '../utils/transport';
 
-const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", fetcher, onVisualRender, onRenderComplete, onDataFetch, renderLoading, renderEmpty, renderError }: {
+const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", fetcher, onVisualRender, onRenderComplete, onDataFetch, onUserInteraction, renderLoading, renderEmpty, renderError }: {
     url?: string,
     config?: SDMXDashboardConfig,
     lang?: string,
@@ -17,6 +17,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
     onVisualRender?: (status: VisualRenderStatus) => void,
     onRenderComplete?: (all: VisualRenderStatus[]) => void,
     onDataFetch?: (telemetry: FetchTelemetry) => void,
+    onUserInteraction?: (interaction: VisualInteraction) => void,
     renderLoading?: (visualId: string) => React.ReactNode,
     renderEmpty?: (visualId: string) => React.ReactNode,
     renderError?: (error: SDMXRenderError) => React.ReactNode
@@ -143,7 +144,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
                     <div key={`row-${index_row}`} className="row mb-3 display-flex">
                       {
                         row.columns.map((cell: any) => (
-                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={transport} onVisualRender={handleVisualRender} renderLoading={renderLoading} renderEmpty={renderEmpty} renderError={renderError} />
+                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={transport} onVisualRender={handleVisualRender} onUserInteraction={onUserInteraction} renderLoading={renderLoading} renderEmpty={renderEmpty} renderError={renderError} />
                         ))
                       }
                     </div>

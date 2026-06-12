@@ -4,6 +4,17 @@ import { SDMXRenderError } from '../errors';
 // authentication, proxying, caching, or retries to every data request
 export type SDMXFetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
+// user interaction on a rendered visual; `concepts` maps dimension id to
+// code at the interaction point, enough to reconstruct the SDMX query for
+// the clicked slice without any engine knowledge on the consumer side
+export type VisualInteraction = {
+    visualId: string,
+    kind: "point-click" | "series-click" | "legend-click",
+    concepts: Record<string, string>,
+    value?: number,
+    timePeriod?: string
+}
+
 // per-visual render state reported through onVisualRender/onRenderComplete;
 // `stats` lets a consumer judge substantive quality ("rendered, but one
 // series and two observations") without inspecting the DOM

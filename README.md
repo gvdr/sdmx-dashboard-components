@@ -91,6 +91,21 @@ Consumers that need to know when a dashboard is ready (live previews, PDF export
 
 Each `VisualRenderStatus` carries the `visualId`, a `status` of `loading`, `rendered`, `empty`, or `error`, the `SDMXRenderError` when failed, and on success a `stats` block (`observationCount`, `seriesCount`, `timePeriodRange`) that lets a consumer judge whether a technically successful render is substantively thin. `onRenderComplete` fires exactly once per config change, after the last visual settles, including the case where every visual fails. The standalone `SDMXChart`, `SDMXValue`, and `SDMXMap` accept `onVisualRender` as well. Both callbacks are optional.
 
+### Interaction callback
+
+Click events on chart elements are exposed through `onUserInteraction`, on the dashboard and on `SDMXChart`:
+
+```typescript
+<SDMXDashboard
+  config={config}
+  onUserInteraction={(e: VisualInteraction) => void}
+  // { visualId, kind: "point-click" | "series-click" | "legend-click",
+  //   concepts: { REF_AREA: "WS", INDICATOR: "POP", ... }, value?, timePeriod? }
+/>
+```
+
+The `concepts` map gives the dimension coordinate of the interaction point as dimension id to code, enough to reconstruct the SDMX query for the clicked slice without engine knowledge on the consumer side. The callback is optional and adds no behaviour when absent.
+
 ### Custom loading, empty, and error states
 
 The built-in loading, empty, and error presentations can be replaced per state with render slots, on the dashboard and on the standalone components:

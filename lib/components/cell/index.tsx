@@ -4,7 +4,7 @@ import Value from '../value';
 import Chart from '../chart';
 import { ErrorBoundary } from 'react-error-boundary';
 import MapComponent from '../map';
-import { SDMXChartConfig, SDMXFetcher, SDMXMapConfig, SDMXVisualConfig, VisualRenderStatus } from '../types';
+import { SDMXChartConfig, SDMXFetcher, SDMXMapConfig, SDMXVisualConfig, VisualInteraction, VisualRenderStatus } from '../types';
 import { SDMXRenderError } from '../../errors';
 import { Map } from 'ol';
 
@@ -23,6 +23,7 @@ const Cell = ({
     className,
     fetcher,
     onVisualRender,
+    onUserInteraction,
     renderLoading,
     renderEmpty,
     renderError
@@ -31,6 +32,7 @@ const Cell = ({
     callback?: (component: React.JSX.Element | Highcharts.Chart | Map) => void,
     language: string, className: string, fetcher?: SDMXFetcher,
     onVisualRender?: (status: VisualRenderStatus) => void,
+    onUserInteraction?: (interaction: VisualInteraction) => void,
     renderLoading?: (visualId: string) => React.ReactNode,
     renderEmpty?: (visualId: string) => React.ReactNode,
     renderError?: (error: SDMXRenderError) => React.ReactNode }) => {
@@ -52,6 +54,7 @@ const Cell = ({
                     language={language}
                     fetcher={fetcher}
                     onVisualRender={onVisualRender}
+                    onUserInteraction={onUserInteraction}
                     renderLoading={renderLoading}
                     renderEmpty={renderEmpty}
                     renderError={renderError}
