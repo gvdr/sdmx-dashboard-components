@@ -22,6 +22,7 @@ import { SDMXChartConfig, SDMXFetcher, VisualRenderStatus } from "../types";
 import { SDMXRenderError, toSDMXRenderError } from "../../errors";
 import { validateSeriesDimensions } from "../../utils/validateChartData";
 import { computeRenderStats } from "../../utils/renderStats";
+import { observeContainerResize } from "../../utils/observeContainerResize";
 import { AlignValue } from "highcharts";
 import { merge } from "ts-deepmerge";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
@@ -47,9 +48,10 @@ interface ChartProps extends HighchartsReact.Props {
     renderLoading?: (visualId: string) => React.ReactNode;
     renderEmpty?: (visualId: string) => React.ReactNode;
     renderError?: (error: SDMXRenderError) => React.ReactNode;
+    autoResize?: boolean;
 }
 
-const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, renderLoading, renderEmpty, renderError: renderErrorSlot, ...props }: ChartProps) => {
+const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, renderLoading, renderEmpty, renderError: renderErrorSlot, autoResize = true, ...props }: ChartProps) => {
 
     const [hcOptions, setHcOptions] = useState<Highcharts.Options>({
         title: {
@@ -71,6 +73,22 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
     const reportRenderStatus = (status: VisualRenderStatus) => {
         onVisualRenderRef.current?.(status);
     }
+
+    // re-measure when the container resizes without a window resize event
+    // (sidebars opening, preview panes dragging, CSS transitions); the
+    // observer attaches once the chart has mounted, hence the isLoading dep
+    useEffect(() => {
+        if (!autoResize) {
+            return;
+        }
+        const container = chartComponentRef.current?.container?.current;
+        if (!container) {
+            return;
+        }
+        return observeContainerResize(container, () => {
+            chartComponentRef.current?.chart?.reflow();
+        });
+    }, [autoResize, isLoading]);
 
     const sortByDimension = (data: any, dimensionId: string) => {
 
