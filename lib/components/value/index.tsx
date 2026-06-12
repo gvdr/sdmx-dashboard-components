@@ -20,9 +20,12 @@ interface ValueProps extends React.HTMLAttributes<HTMLDivElement> {
     language: string;
     fetcher?: SDMXFetcher;
     onVisualRender?: (status: VisualRenderStatus) => void;
+    renderLoading?: (visualId: string) => React.ReactNode;
+    renderEmpty?: (visualId: string) => React.ReactNode;
+    renderError?: (error: SDMXRenderError) => React.ReactNode;
 }
 
-const Value = ({ config, placeholder, callback, language, fetcher, onVisualRender, ...props }: ValueProps) => {
+const Value = ({ config, placeholder, callback, language, fetcher, onVisualRender, renderLoading, renderEmpty, renderError: renderErrorSlot, ...props }: ValueProps) => {
 
     const [valueElement, setValueElement] = useState(<span>Loading...</span>)
     const [popupStr, setPopupStr] = useState<string>("")
@@ -292,6 +295,12 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
         </div>
 
     if (renderError) {
+        if (renderError.code === 'ERR_EMPTY' && renderEmpty) {
+            return <>{renderEmpty(config.id)}</>
+        }
+        if (renderErrorSlot) {
+            return <>{renderErrorSlot(renderError)}</>
+        }
         return (
             <div className={`sdmx-render-error alert alert-warning ${containerClass || ""}`} role="alert" data-error-code={renderError.code}>
                 {renderError.message}
@@ -305,7 +314,7 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
             className={`${containerClass || ''} ${config.frame ? "border" : ""}`}
             style={containerStyle}
             {...otherProps}>
-            { isLoading ? placeholder || <div className="opacity-50 d-flex align-items-center justify-content-center h-100 w-100"><span>Loading...</span></div>
+            { isLoading ? (renderLoading ? renderLoading(config.id) : placeholder) || <div className="opacity-50 d-flex align-items-center justify-content-center h-100 w-100"><span>Loading...</span></div>
             :   config.dataLink ? <a href={config.dataLink} target="_blank">{valueNode}</a> :
                 valueNode
             }

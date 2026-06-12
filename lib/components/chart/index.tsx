@@ -44,9 +44,12 @@ interface ChartProps extends HighchartsReact.Props {
     callback?: (chart: Highcharts.Chart) => void;
     fetcher?: SDMXFetcher;
     onVisualRender?: (status: VisualRenderStatus) => void;
+    renderLoading?: (visualId: string) => React.ReactNode;
+    renderEmpty?: (visualId: string) => React.ReactNode;
+    renderError?: (error: SDMXRenderError) => React.ReactNode;
 }
 
-const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, ...props }: ChartProps) => {
+const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, renderLoading, renderEmpty, renderError: renderErrorSlot, ...props }: ChartProps) => {
 
     const [hcOptions, setHcOptions] = useState<Highcharts.Options>({
         title: {
@@ -705,6 +708,12 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
 
     if (renderError) {
         const errorCode = renderError instanceof SDMXRenderError ? renderError.code : undefined
+        if (errorCode === 'ERR_EMPTY' && renderEmpty) {
+            return <>{renderEmpty(config.id)}</>
+        }
+        if (renderErrorSlot && renderError instanceof SDMXRenderError) {
+            return <>{renderErrorSlot(renderError)}</>
+        }
         return (
             <div className={`sdmx-render-error alert alert-warning ${props.className || ""}`} role="alert" data-error-code={errorCode}>
                 {renderError.message}
@@ -714,7 +723,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
 
     return (
         <>
-            {isLoading ? placeholder || <div className="opacity-50 d-table-cell align-middle" style={{ "height": 400, "width": 600 }}>Loading...</div>
+            {isLoading ? (renderLoading ? renderLoading(config.id) : placeholder) || <div className="opacity-50 d-table-cell align-middle" style={{ "height": 400, "width": 600 }}>Loading...</div>
             :  config.dataLink ? <a href={ config.dataLink} target="_blank" rel="noreferrer">{chart}</a>
                 : chart
             }

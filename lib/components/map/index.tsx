@@ -39,7 +39,15 @@ import { getColorSchemeFunction, getColorSchemePreview, getReadableTextColor, ge
 
 type MapDataLayer = VectorLayer<VectorSource> | VectorTileLayer
 
-const MapComponent = ({ config, language, callback, fetcher, onVisualRender }: { config: SDMXMapConfig, language: string, callback?: (map: Map) => void, fetcher?: SDMXFetcher, onVisualRender?: (status: VisualRenderStatus) => void }) => {
+const MapComponent = ({ config, language, callback, fetcher, onVisualRender, renderEmpty, renderError: renderErrorSlot }: {
+  config: SDMXMapConfig,
+  language: string,
+  callback?: (map: Map) => void,
+  fetcher?: SDMXFetcher,
+  onVisualRender?: (status: VisualRenderStatus) => void,
+  renderEmpty?: (visualId: string) => React.ReactNode,
+  renderError?: (error: SDMXRenderError) => React.ReactNode
+}) => {
   // set intial state - used to track references to OpenLayers
   //  objects for use in hooks, event handlers, etc.
   const [featuresLayer, setFeaturesLayer] = useState<MapDataLayer>()
@@ -407,11 +415,13 @@ const MapComponent = ({ config, language, callback, fetcher, onVisualRender }: {
 
     return (
       <div className={`${config.frame ? "border" : "" }`}>
-        {renderError &&
-          <div className="sdmx-render-error alert alert-warning" role="alert" data-error-code={renderError.code}>
-            {renderError.message}
-          </div>
-        }
+        {renderError && (
+          renderError.code === 'ERR_EMPTY' && renderEmpty ? renderEmpty(config.id)
+          : renderErrorSlot ? renderErrorSlot(renderError)
+          : <div className="sdmx-render-error alert alert-warning" role="alert" data-error-code={renderError.code}>
+              {renderError.message}
+            </div>
+        )}
         {/* the map and overlay divs stay mounted on error: the OpenLayers
             effects hold refs into them and a config change retries in place */}
         <div id={`map-${config.id || 'id'}`} ref={mapElement} className={`map ${styles.minCellHeight}`} style={renderError ? { display: 'none' } : undefined}></div>

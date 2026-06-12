@@ -6,14 +6,18 @@ import Text from './text';
 
 import '../global.module.css';
 import { SDMXDashboardConfig, SDMXFetcher, VisualRenderStatus } from './types';
+import { SDMXRenderError } from '../errors';
 
-const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", fetcher, onVisualRender, onRenderComplete }: {
+const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", fetcher, onVisualRender, onRenderComplete, renderLoading, renderEmpty, renderError }: {
     url?: string,
     config?: SDMXDashboardConfig,
     lang?: string,
     fetcher?: SDMXFetcher,
     onVisualRender?: (status: VisualRenderStatus) => void,
-    onRenderComplete?: (all: VisualRenderStatus[]) => void
+    onRenderComplete?: (all: VisualRenderStatus[]) => void,
+    renderLoading?: (visualId: string) => React.ReactNode,
+    renderEmpty?: (visualId: string) => React.ReactNode,
+    renderError?: (error: SDMXRenderError) => React.ReactNode
 }) => {
 
     const [pageData, setPageData] = useState<SDMXDashboardConfig>();
@@ -124,7 +128,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
                     <div key={`row-${index_row}`} className="row mb-3 display-flex">
                       {
                         row.columns.map((cell: any) => (
-                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={fetcher} onVisualRender={handleVisualRender} />
+                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={fetcher} onVisualRender={handleVisualRender} renderLoading={renderLoading} renderEmpty={renderEmpty} renderError={renderError} />
                         ))
                       }
                     </div>

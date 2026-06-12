@@ -5,6 +5,7 @@ import Chart from '../chart';
 import { ErrorBoundary } from 'react-error-boundary';
 import MapComponent from '../map';
 import { SDMXChartConfig, SDMXFetcher, SDMXMapConfig, SDMXVisualConfig, VisualRenderStatus } from '../types';
+import { SDMXRenderError } from '../../errors';
 import { Map } from 'ol';
 
 /**
@@ -21,12 +22,18 @@ const Cell = ({
     language,
     className,
     fetcher,
-    onVisualRender
+    onVisualRender,
+    renderLoading,
+    renderEmpty,
+    renderError
 }: {
     config: SDMXVisualConfig | SDMXChartConfig | SDMXMapConfig,
     callback?: (component: React.JSX.Element | Highcharts.Chart | Map) => void,
     language: string, className: string, fetcher?: SDMXFetcher,
-    onVisualRender?: (status: VisualRenderStatus) => void }) => {
+    onVisualRender?: (status: VisualRenderStatus) => void,
+    renderLoading?: (visualId: string) => React.ReactNode,
+    renderEmpty?: (visualId: string) => React.ReactNode,
+    renderError?: (error: SDMXRenderError) => React.ReactNode }) => {
 
     const conditionalBoardComponent = () => {
 
@@ -45,6 +52,9 @@ const Cell = ({
                     language={language}
                     fetcher={fetcher}
                     onVisualRender={onVisualRender}
+                    renderLoading={renderLoading}
+                    renderEmpty={renderEmpty}
+                    renderError={renderError}
                 />
             case 'map':
                 return <MapComponent
@@ -54,6 +64,8 @@ const Cell = ({
                     callback={callback}
                     fetcher={fetcher}
                     onVisualRender={onVisualRender}
+                    renderEmpty={renderEmpty}
+                    renderError={renderError}
                 />
             case 'value':
                 return <Value
@@ -63,6 +75,9 @@ const Cell = ({
                     callback={callback}
                     fetcher={fetcher}
                     onVisualRender={onVisualRender}
+                    renderLoading={renderLoading}
+                    renderEmpty={renderEmpty}
+                    renderError={renderError}
                 />
             case 'note':
                 return <Text
