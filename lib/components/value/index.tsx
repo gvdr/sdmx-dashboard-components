@@ -6,7 +6,7 @@ import { SDMXParser } from 'sdmx-json-parser';
 import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
-import { SDMXVisualConfig } from "../types";
+import { SDMXFetcher, SDMXVisualConfig } from "../types";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
 
 
@@ -16,9 +16,10 @@ interface ValueProps extends React.HTMLAttributes<HTMLDivElement> {
     placeholder?: React.JSX.Element;
     callback?: (value: React.JSX.Element) => void;
     language: string;
+    fetcher?: SDMXFetcher;
 }
 
-const Value = ({ config, placeholder, callback, language, ...props }: ValueProps) => {
+const Value = ({ config, placeholder, callback, language, fetcher, ...props }: ValueProps) => {
 
     const [valueElement, setValueElement] = useState(<span>Loading...</span>)
     const [popupStr, setPopupStr] = useState<string>("")
@@ -139,7 +140,8 @@ const Value = ({ config, placeholder, callback, language, ...props }: ValueProps
             headers: new Headers({
                 Accept: "application/vnd.sdmx.data+json;version=2.0.0",
                 "Accept-Language": language
-            })
+            }),
+            fetcher
         }).then(() => {
             const data = sdmxParser.getData();
             const dimensions = sdmxParser.getDimensions();
@@ -169,7 +171,7 @@ const Value = ({ config, placeholder, callback, language, ...props }: ValueProps
                             const expr = parseExpr(`x0 ${dataObj.exprOperator} x1`, new EvalAstFactory());
                             const scope: Scope = {x0: item.value}
                             if (isNaN(parseInt(dataObj.exprOperand))) {
-                                const dataPromises = fetchDataExprOperand([dataObj.exprOperand], data, scope, attributes, language)
+                                const dataPromises = fetchDataExprOperand([dataObj.exprOperand], data, scope, attributes, language, fetcher)
                                 Promise.all(dataPromises).then(() => {
                                     Object.keys(scope).forEach((key: string) => {
                                         if (Array.isArray(scope[key])) {
@@ -190,7 +192,7 @@ const Value = ({ config, placeholder, callback, language, ...props }: ValueProps
                     setPopupStr(countData.map((item: any) => item[config.xAxisConcept]).join(', '))
                 } else if (dataObj.operator === "expr") {
                     const scope: Scope = {x0: valueStr}
-                    const dataPromises = fetchDataExprOperand(dataObj.exprOperand, data, scope, attributes, language)
+                    const dataPromises = fetchDataExprOperand(dataObj.exprOperand, data, scope, attributes, language, fetcher)
                     Promise.all(dataPromises).then(() => {
                         const astFactory = new EvalAstFactory();
                         const expr = parseExpr(dataObj.expression, astFactory);
@@ -215,7 +217,7 @@ const Value = ({ config, placeholder, callback, language, ...props }: ValueProps
                 callback(valueElement)
             }
         });
-    }, [language]);
+    }, [language, fetcher]);
 
     const valueNode: React.ReactNode =
         <div className="value-node d-flex flex-column h-100">

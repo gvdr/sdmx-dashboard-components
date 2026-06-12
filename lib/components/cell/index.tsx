@@ -4,7 +4,7 @@ import Value from '../value';
 import Chart from '../chart';
 import { ErrorBoundary } from 'react-error-boundary';
 import MapComponent from '../map';
-import { SDMXChartConfig, SDMXMapConfig, SDMXVisualConfig } from '../types';
+import { SDMXChartConfig, SDMXFetcher, SDMXMapConfig, SDMXVisualConfig } from '../types';
 import { Map } from 'ol';
 
 /**
@@ -19,11 +19,12 @@ const Cell = ({
     config,
     callback,
     language,
-    className
+    className,
+    fetcher
 }: {
     config: SDMXVisualConfig | SDMXChartConfig | SDMXMapConfig,
     callback?: (component: React.JSX.Element | Highcharts.Chart | Map) => void,
-    language: string, className: string }) => {
+    language: string, className: string, fetcher?: SDMXFetcher }) => {
 
     const conditionalBoardComponent = () => {
 
@@ -40,6 +41,7 @@ const Cell = ({
                     key={language}
                     callback={callback}
                     language={language}
+                    fetcher={fetcher}
                 />
             case 'map':
                 return <MapComponent
@@ -47,6 +49,7 @@ const Cell = ({
                     key={language}
                     language={language}
                     callback={callback}
+                    fetcher={fetcher}
                 />
             case 'value':
                 return <Value
@@ -54,6 +57,7 @@ const Cell = ({
                     key={language}
                     language={language}
                     callback={callback}
+                    fetcher={fetcher}
                 />
             case 'note':
                 return <Text

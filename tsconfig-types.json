@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "include": ["lib"],
-  "exclude": ["lib/**/*.test.ts"],
+  "exclude": ["lib/**/*.test.ts", "lib/**/*.test.tsx"],
   "compilerOptions": {
     "declaration": true,
     "emitDeclarationOnly": true,

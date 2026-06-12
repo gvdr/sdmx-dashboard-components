@@ -30,14 +30,14 @@ import styles from './styles.module.css';
 import Control from 'ol/control/Control';
 import { parseDataExpr } from '../../utils/parseDataExpr';
 import { parseTextExpr } from '../../utils/parseTextExpr';
-import { SDMXMapConfig } from '../types';
+import { SDMXFetcher, SDMXMapConfig } from '../types';
 import RenderFeature from 'ol/render/Feature';
 import { isISO3Code, isoCountryCode3To2 } from '../../utils/isoCountryCode';
 import { getColorSchemeFunction, getColorSchemePreview, getReadableTextColor, getTextHaloColor } from '../../utils/mapColors';
 
 type MapDataLayer = VectorLayer<VectorSource> | VectorTileLayer
 
-const MapComponent = ({ config, language, callback }: { config: SDMXMapConfig, language: string, callback?: (map: Map) => void }) => {
+const MapComponent = ({ config, language, callback, fetcher }: { config: SDMXMapConfig, language: string, callback?: (map: Map) => void, fetcher?: SDMXFetcher }) => {
   // set intial state - used to track references to OpenLayers
   //  objects for use in hooks, event handlers, etc.
   const [featuresLayer, setFeaturesLayer] = useState<MapDataLayer>()
@@ -220,7 +220,8 @@ const MapComponent = ({ config, language, callback }: { config: SDMXMapConfig, l
       headers: new Headers({
         Accept: "application/vnd.sdmx.data+json;version=2.0.0",
         "Accept-Language": language
-      })
+      }),
+      fetcher
     }).then(() => {
       const data = sdmxParser.getData();
       const _dim = sdmxParser.getDimensions();
@@ -260,7 +261,7 @@ const MapComponent = ({ config, language, callback }: { config: SDMXMapConfig, l
       legendElement.current!.children[0]!.innerHTML = titleText
 
     });
-  }, [config, language, callback])
+  }, [config, language, callback, fetcher])
 
   useEffect(() => {
     const styleFunction = (feature: FeatureLike) => {

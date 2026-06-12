@@ -18,7 +18,7 @@ import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { parseDate } from "../../utils/parseDate";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
-import { SDMXChartConfig } from "../types";
+import { SDMXChartConfig, SDMXFetcher } from "../types";
 import { SDMXRenderError } from "../../errors";
 import { validateSeriesDimensions } from "../../utils/validateChartData";
 import { AlignValue } from "highcharts";
@@ -41,9 +41,10 @@ interface ChartProps extends HighchartsReact.Props {
     language: string;
     placeholder?: React.JSX.Element;
     callback?: (chart: Highcharts.Chart) => void;
+    fetcher?: SDMXFetcher;
 }
 
-const Chart = ({ config, language, placeholder, callback, ...props }: ChartProps) => {
+const Chart = ({ config, language, placeholder, callback, fetcher, ...props }: ChartProps) => {
 
     const [hcOptions, setHcOptions] = useState<Highcharts.Options>({
         title: {
@@ -115,7 +116,8 @@ const Chart = ({ config, language, placeholder, callback, ...props }: ChartProps
                 headers: new Headers({
                     Accept: "application/vnd.sdmx.data+json;version=2.0.0",
                     "Accept-Language": language
-                })
+                }),
+                fetcher
             }).then(() => {
                 let data = parser.getData();
                 const attributes = parser.getAttributes();
@@ -155,7 +157,7 @@ const Chart = ({ config, language, placeholder, callback, ...props }: ChartProps
 
                     } else if (dataObj.operator === "expr") {
                         const scope: Scope = {x0: data.map((item: any) => item.value)}
-                        const dataPromises = fetchDataExprOperand(dataObj.exprOperand, data, scope, attributes, language)
+                        const dataPromises = fetchDataExprOperand(dataObj.exprOperand, data, scope, attributes, language, fetcher)
                         return Promise.all(dataPromises).then(() => {
                             const astFactory = new EvalAstFactory();
                             const expr = parseExpr(dataObj.expression, astFactory);
@@ -635,7 +637,7 @@ const Chart = ({ config, language, placeholder, callback, ...props }: ChartProps
             setRenderError(error)
             setIsLoading(false)
         })
-    }, [config, language]);
+    }, [config, language, fetcher]);
 
     const chart: React.ReactNode =
         <HighchartsReact

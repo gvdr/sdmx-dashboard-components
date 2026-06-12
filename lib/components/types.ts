@@ -1,3 +1,7 @@
+// drop-in replacement for the global fetch; lets consumers add
+// authentication, proxying, caching, or retries to every data request
+export type SDMXFetcher = (url: string, init?: RequestInit) => Promise<Response>;
+
 export type SDMXTextConfig = {
     size?: string, // size of the text as in font-size css property
     weight?: string, // weight of the text as in font-weight css property

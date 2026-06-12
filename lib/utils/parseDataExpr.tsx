@@ -94,9 +94,10 @@ export const parseDataExpr = (dataExprs: string | Array<string>) => {
  * @param {Object} scope
  * @param {Object} attributes
  * @param {string} language
+ * @param {Function} fetcher custom fetch implementation for the data requests (optional)
  * @returns {Promise<Array<any>>}
  */
-export const fetchDataExprOperand = (exprOperands: Array<string>, data: any, scope: any, attributes: any, language: string) => {
+export const fetchDataExprOperand = (exprOperands: Array<string>, data: any, scope: any, attributes: any, language: string, fetcher?: (url: string, init?: RequestInit) => Promise<Response>) => {
 
   return exprOperands.map((exprOperand: string, index: number) => {
     if (exprOperand.startsWith('{')) {
@@ -112,7 +113,8 @@ export const fetchDataExprOperand = (exprOperands: Array<string>, data: any, sco
             headers: new Headers({
                 Accept: "application/vnd.sdmx.data+json;version=2.0.0",
                 "Accept-Language": language
-            })
+            }),
+            fetcher
         }).then(() => {
             const extraData = parser.getData();
             if (extraData.length !== data.length) {

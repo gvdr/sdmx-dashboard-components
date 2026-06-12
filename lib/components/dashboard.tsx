@@ -5,15 +5,15 @@ import Cell from './cell';
 import Text from './text';
 
 import '../global.module.css';
-import { SDMXDashboardConfig } from './types';
+import { SDMXDashboardConfig, SDMXFetcher } from './types';
 
-const Dashboard = ({ url, config, lang = document.documentElement.lang || "en" }: { url?: string, config?: SDMXDashboardConfig, lang?: string}) => {
+const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", fetcher }: { url?: string, config?: SDMXDashboardConfig, lang?: string, fetcher?: SDMXFetcher}) => {
 
     const [pageData, setPageData] = useState<SDMXDashboardConfig>();
 
     useEffect(() => {
       if (url) {
-        fetch(url).then(response => response.json()).then((data) => {
+        (fetcher || fetch)(url).then(response => response.json()).then((data) => {
             // set default values
             if (!data.colCount) {
                 data.colCount = 3;
@@ -31,7 +31,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en" }
             console.log(e)
         })
       }
-    }, [url])
+    }, [url, fetcher])
 
     useEffect(() => {
       if(config) {
@@ -64,7 +64,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en" }
                     <div key={`row-${index_row}`} className="row mb-3 display-flex">
                       {
                         row.columns.map((cell: any) => (
-                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} />
+                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={fetcher} />
                         ))
                       }
                     </div>

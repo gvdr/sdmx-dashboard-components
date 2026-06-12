@@ -56,6 +56,19 @@ const App = () => {
 };
 ```
 
+### Custom data transport
+
+All components accept an optional `fetcher` prop with the signature of the global `fetch` (`(url, init?) => Promise<Response>`). When provided, every request made by the library (the dashboard configuration and all SDMX data queries) goes through it, so the integrating application can add authentication headers, route requests through a proxy, or apply caching and retries without touching the global `fetch`. When absent, the global `fetch` is used.
+
+```javascript
+const proxyFetcher = (url, init) =>
+  fetch(url.replace('https://stats-sdmx-disseminate.pacificdata.org', '/api/sdmx-proxy'), init);
+
+<SDMXDashboard url='path/to/dashboard.json' fetcher={proxyFetcher} />
+```
+
+Routing the SDMX data queries through the fetcher requires an sdmx-json-parser version whose `getDatasets` accepts the `fetcher` option; on older parser versions the data queries fall back to the global `fetch`. The GeoJSON layers of `SDMXMap` are loaded by OpenLayers and do not go through the fetcher.
+
 ### Highcharts Styled Mode
 
 The user can also make use of all the Highcharts options passing them as props to the components with the `extraOptions` parameter of the config object.
