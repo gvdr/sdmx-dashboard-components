@@ -124,6 +124,13 @@ The configuration types are exported from the package root: `SDMXDashboardConfig
 
 > **Note on `extraOptions`:** `extraOptions` passes raw Highcharts options straight through and is typed `Record<string, unknown>`. It is engine-bound and not supported across major versions (a charting-engine change can break stored `extraOptions`). Prefer the semantic config fields where they exist.
 
+### Engine neutrality
+
+Most of the configuration schema is engine-neutral, so the underlying charting engine can change without breaking consumers who stay on the documented API. Two things to know:
+
+- **Render target.** Charts render to inline **SVG**. Consumers that post-process the output (for example converting chart SVG to canvas for PDF export) can rely on this as part of the public contract; a change to the render target would be a major-version note.
+- **Semantic vs engine-bound config.** Prefer the semantic fields (`title`, `subtitle`, `unit`, `xAxisTitle`, `yAxisTitle`, `colorPalette`, `legend`) over `extraOptions`. `extraOptions` is a passthrough of raw engine options and is not guaranteed across major versions. Styling through internal engine CSS class names is likewise unsupported; use the documented config instead.
+
 ### Server-side rendering
 
 The package is side-effect-free at import time: it touches no `window`, `document`, or charting-engine globals until a component first renders on the client. `import { SDMXDashboard } from 'sdmx-dashboard-components'` therefore succeeds in a Node.js process with no DOM, and a server-rendered framework (Next.js and similar) can use the components directly, with no `dynamic(ssr: false)` wrapper. Components render a placeholder on the server and hydrate into charts on the client. Remember to import the stylesheet (see [Usage](#usage)); the engine feature modules register on first client render.
