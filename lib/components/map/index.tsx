@@ -1,7 +1,6 @@
 import React from 'react';
 import { useState, useRef, useEffect, useMemo } from 'react';
-// @ts-ignore
-import { SDMXParser } from 'sdmx-json-parser';
+import { SDMXParser } from '../../utils/sdmxParser';
 
 import Map from 'ol/Map';
 import View from 'ol/View'

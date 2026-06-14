@@ -1,6 +1,5 @@
 import { parseOperandTextExpr } from "./parseTextExpr";
-// @ts-ignore
-import { SDMXParser } from 'sdmx-json-parser';
+import { SDMXParser } from './sdmxParser';
 
 /**
  * Process the data expression

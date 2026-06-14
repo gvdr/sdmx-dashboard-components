@@ -20,6 +20,14 @@ More information on the syntax of the configuration can be found [here](https://
 npm install sdmx-dashboard-components
 ```
 
+The component styles are published as a separate stylesheet. Import it once in your application (for example in the root layout or entry module):
+
+```javascript
+import 'sdmx-dashboard-components/dist/sdmx-dashboard-components.css';
+```
+
+> **Breaking change in this version:** the CSS is no longer auto-injected by the JavaScript bundle. Importing the stylesheet above is now required for the components to be styled. This change makes the package importable in a server (no-DOM) process; see [Server-side rendering](#server-side-rendering).
+
 ```javascript
 import { SDMXDashboard } from 'sdmx-dashboard-components';
 
@@ -90,6 +98,10 @@ Consumers that need to know when a dashboard is ready (live previews, PDF export
 ```
 
 Each `VisualRenderStatus` carries the `visualId`, a `status` of `loading`, `rendered`, `empty`, or `error`, the `SDMXRenderError` when failed, and on success a `stats` block (`observationCount`, `seriesCount`, `timePeriodRange`) that lets a consumer judge whether a technically successful render is substantively thin. `onRenderComplete` fires exactly once per config change, after the last visual settles, including the case where every visual fails. The standalone `SDMXChart`, `SDMXValue`, and `SDMXMap` accept `onVisualRender` as well. Both callbacks are optional.
+
+### Server-side rendering
+
+The package is side-effect-free at import time: it touches no `window`, `document`, or charting-engine globals until a component first renders on the client. `import { SDMXDashboard } from 'sdmx-dashboard-components'` therefore succeeds in a Node.js process with no DOM, and a server-rendered framework (Next.js and similar) can use the components directly, with no `dynamic(ssr: false)` wrapper. Components render a placeholder on the server and hydrate into charts on the client. Remember to import the stylesheet (see [Usage](#usage)); the engine feature modules register on first client render.
 
 ### Interaction callback
 
