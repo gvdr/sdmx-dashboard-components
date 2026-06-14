@@ -84,6 +84,8 @@ export type SDMXChartConfig = {
         },
     },
     colorPalette?: SDMXColorPalette, // color palette used for the visualization`
+    xAxisTitle?: SDMXTextConfig, // semantic, engine-neutral x-axis title
+    yAxisTitle?: SDMXTextConfig, // semantic, engine-neutral y-axis title
     extraOptions?: Record<string, unknown> // engine-bound extra options for the visualization (see README: unsupported across major versions)
 } & SDMXVisualConfig
 

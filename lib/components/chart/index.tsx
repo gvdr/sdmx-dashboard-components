@@ -250,6 +250,16 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
         });
         let titleText = config.title?'Loading...':'';
         let subtitleText = config.subtitle?'Loading...':'';
+        // engine-neutral axis titles, resolved per language; left undefined
+        // when not configured so the engine defaults stand
+        let xAxisTitleText: string | undefined;
+        let yAxisTitleText: string | undefined;
+        const resolveText = (text: SDMXChartConfig['xAxisTitle']): string | undefined => {
+            if (!text) {
+                return undefined;
+            }
+            return typeof text.text === 'string' ? text.text : text.text[language];
+        }
         let allRows: any[] = [];
         // dimension structures for the interaction handlers; charts with
         // several datasets share one structure in practice, the last wins
@@ -271,6 +281,14 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                     subtitleText = parseTextExpr(config.subtitle, dimensions)
                 } else if (typeof config.subtitle === 'object') {
                     subtitleText = typeof config.subtitle.text == 'string'? parseTextExpr(config.subtitle.text, dimensions) : parseTextExpr(config.subtitle.text[language], dimensions)
+                }
+                const resolvedXAxisTitle = resolveText(config.xAxisTitle);
+                if (resolvedXAxisTitle !== undefined) {
+                    xAxisTitleText = parseTextExpr(resolvedXAxisTitle, dimensions)
+                }
+                const resolvedYAxisTitle = resolveText(config.yAxisTitle);
+                if (resolvedYAxisTitle !== undefined) {
+                    yAxisTitleText = parseTextExpr(resolvedYAxisTitle, dimensions)
                 }
 
                 const availableConcepts = dimensions.map((dimension: any) => dimension.id);
@@ -696,6 +714,17 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                 onUserInteractionRef.current?.(interaction);
             }
 
+            // semantic axis titles, deep-merged so the per-chart-type xAxis
+            // (type, categories, units) still applies and extraOptions can
+            // still override
+            const axisTitleOptions: any = {};
+            if (xAxisTitleText !== undefined) {
+                axisTitleOptions.xAxis = { title: { text: xAxisTitleText } };
+            }
+            if (yAxisTitleText !== undefined) {
+                axisTitleOptions.yAxis = { title: { text: yAxisTitleText } };
+            }
+
             setHcOptions(merge({
                 plotOptions: {
                     series: {
@@ -758,7 +787,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                     align: legendAlign
                 },
                 series: seriesData
-            }, hcExtraOptions || {}, config.extraOptions || {}));
+            }, axisTitleOptions, hcExtraOptions || {}, config.extraOptions || {}));
 
             reportRenderStatus({
                 visualId: config.id,
