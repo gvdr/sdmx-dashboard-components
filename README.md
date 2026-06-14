@@ -99,6 +99,31 @@ Consumers that need to know when a dashboard is ready (live previews, PDF export
 
 Each `VisualRenderStatus` carries the `visualId`, a `status` of `loading`, `rendered`, `empty`, or `error`, the `SDMXRenderError` when failed, and on success a `stats` block (`observationCount`, `seriesCount`, `timePeriodRange`) that lets a consumer judge whether a technically successful render is substantively thin. `onRenderComplete` fires exactly once per config change, after the last visual settles, including the case where every visual fails. The standalone `SDMXChart`, `SDMXValue`, and `SDMXMap` accept `onVisualRender` as well. Both callbacks are optional.
 
+### Table visual
+
+`type: "table"` renders a tabular visual: the `xAxisConcept` becomes the table rows and an optional `legend.concept` is pivoted across the columns (without it, a single value column is shown). It reuses the same data, error, lifecycle, and fetcher behaviour as the other visuals.
+
+```javascript
+<SDMXTable
+  config={{
+    id: 'pop-table',
+    type: 'table',
+    xAxisConcept: 'TIME_PERIOD',
+    legend: { concept: 'GEO_PICT' },
+    data: 'https://.../rest/data/SPC,DF_POP,1.0/...?dimensionAtObservation=AllDimensions'
+  }}
+  language='en'
+/>
+```
+
+### Exported types
+
+The configuration types are exported from the package root: `SDMXDashboardConfig`, `SDMXDashboardRow`, `SDMXVisualConfig`, `SDMXChartConfig`, `SDMXMapConfig`, `SDMXTableConfig`, `SDMXTextConfig`, and `SDMXColorPalette`.
+
+> **Deprecation:** dashboard rows accept their visuals under `columns`. The earlier misspelling `colums` is still accepted as an alias for one major version; migrate to `columns`.
+
+> **Note on `extraOptions`:** `extraOptions` passes raw Highcharts options straight through and is typed `Record<string, unknown>`. It is engine-bound and not supported across major versions (a charting-engine change can break stored `extraOptions`). Prefer the semantic config fields where they exist.
+
 ### Server-side rendering
 
 The package is side-effect-free at import time: it touches no `window`, `document`, or charting-engine globals until a component first renders on the client. `import { SDMXDashboard } from 'sdmx-dashboard-components'` therefore succeeds in a Node.js process with no DOM, and a server-rendered framework (Next.js and similar) can use the components directly, with no `dynamic(ssr: false)` wrapper. Components render a placeholder on the server and hydrate into charts on the client. Remember to import the stylesheet (see [Usage](#usage)); the engine feature modules register on first client render.

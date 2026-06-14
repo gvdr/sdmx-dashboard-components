@@ -409,7 +409,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                         const yAxisValue = latestValues
                             .filter((val: any) => val.value !== null ) // remove null values from chart
                             .map((val: any) => {
-                                if (config.extraOptions?.plotOptions?.[chartType]?.colorByPoint) {
+                                if ((config.extraOptions as any)?.plotOptions?.[chartType]?.colorByPoint) {
                                     // add color to each point of the serie if colorByPoint is set to true
                                     const valXAxis = xAxisDimension.values.find((xVal: any) => xVal.name === val[xAxisConcept])
                                     if (typeof config.colorPalette?.[xAxisConcept]?.[valXAxis.id] === 'number') {
@@ -496,7 +496,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                                 y: legendSerieDataValue["value"]
                             }
                             // if colorByPoint is true, we use the colorPalette to color the series points, each column is colored differently
-                            if (config.extraOptions?.plotOptions?.column?.colorByPoint) {
+                            if ((config.extraOptions as any)?.plotOptions?.column?.colorByPoint) {
                                 if (typeof config?.colorPalette?.[xAxisConcept]?.[xAxisDimensionValue.id] === 'number') {
                                     legendSerieDataObj.colorIndex = config?.colorPalette?.[xAxisConcept]?.[xAxisDimensionValue.id]
                                     legendSerieDataObj.className = `highcharts-colorPalette-${xAxisDimension.id}`

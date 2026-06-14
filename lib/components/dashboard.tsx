@@ -80,22 +80,29 @@ const Dashboard = ({ url, config, lang: langProp, fetcher, onVisualRender, onRen
         }
     }
 
+    // accept the deprecated `colums` misspelling as an alias for `columns`
+    // and apply per-config defaults, so every downstream read uses `columns`
+    const normalizeConfig = (cfg: any) => {
+        if (!cfg.colCount) {
+            cfg.colCount = 3;
+        }
+        (cfg.rows || []).forEach((row: any) => {
+            if (!row.columns && row.colums) {
+                row.columns = row.colums;
+            }
+            (row.columns || []).forEach((cell: any) => {
+                if (!cell.colSize) {
+                    cell.colSize = 1;
+                }
+            })
+        })
+        return cfg;
+    }
+
     useEffect(() => {
       if (url) {
         (fetcher || fetch)(url).then(response => response.json()).then((data) => {
-            // set default values
-            if (!data.colCount) {
-                data.colCount = 3;
-            }
-            data.rows.forEach((row: any) => {
-              row.columns.forEach((cell: any) => {
-                if (!cell.colSize) {
-                  cell.colSize = 1;
-                }
-              })
-            })
-            setPageData(data)
-
+            setPageData(normalizeConfig(data))
         }).catch((e) => {
             console.log(e)
         })
@@ -119,17 +126,7 @@ const Dashboard = ({ url, config, lang: langProp, fetcher, onVisualRender, onRen
 
     useEffect(() => {
       if(config) {
-        if (!config.colCount) {
-            config.colCount = 3;
-        }
-        config.rows.forEach((row: any) => {
-          row.columns.forEach((cell: any) => {
-            if (!cell.colSize) {
-              cell.colSize = 1;
-            }
-          })
-        })
-        setPageData(config)
+        setPageData(normalizeConfig(config))
       }
     }, [config])
 
