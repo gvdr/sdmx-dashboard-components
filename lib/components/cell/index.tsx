@@ -5,7 +5,7 @@ import Chart from '../chart';
 import { ErrorBoundary } from 'react-error-boundary';
 import MapComponent from '../map';
 import TableComponent from '../table';
-import { SDMXChartConfig, SDMXFetcher, SDMXMapConfig, SDMXTableConfig, SDMXVisualConfig, VisualInteraction, VisualRenderStatus } from '../types';
+import { SDMXChartConfig, SDMXFetcher, SDMXMapConfig, SDMXTableConfig, SDMXTheme, SDMXVisualConfig, VisualInteraction, VisualRenderStatus } from '../types';
 import { SDMXRenderError } from '../../errors';
 import { Map } from 'ol';
 
@@ -27,7 +27,8 @@ const Cell = ({
     onUserInteraction,
     renderLoading,
     renderEmpty,
-    renderError
+    renderError,
+    theme
 }: {
     config: SDMXVisualConfig | SDMXChartConfig | SDMXMapConfig,
     callback?: (component: React.JSX.Element | Highcharts.Chart | Map) => void,
@@ -36,7 +37,8 @@ const Cell = ({
     onUserInteraction?: (interaction: VisualInteraction) => void,
     renderLoading?: (visualId: string) => React.ReactNode,
     renderEmpty?: (visualId: string) => React.ReactNode,
-    renderError?: (error: SDMXRenderError) => React.ReactNode }) => {
+    renderError?: (error: SDMXRenderError) => React.ReactNode,
+    theme?: SDMXTheme }) => {
 
     const conditionalBoardComponent = () => {
 
@@ -59,6 +61,7 @@ const Cell = ({
                     renderLoading={renderLoading}
                     renderEmpty={renderEmpty}
                     renderError={renderError}
+                    theme={theme}
                 />
             case 'map':
                 return <MapComponent
@@ -82,6 +85,7 @@ const Cell = ({
                     renderLoading={renderLoading}
                     renderEmpty={renderEmpty}
                     renderError={renderError}
+                    theme={theme}
                 />
             case 'table':
                 return <TableComponent
@@ -93,6 +97,7 @@ const Cell = ({
                     renderLoading={renderLoading}
                     renderEmpty={renderEmpty}
                     renderError={renderError}
+                    theme={theme}
                 />
             case 'note':
                 return <Text

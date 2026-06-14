@@ -5,9 +5,10 @@ import { SDMXParser } from '../../utils/sdmxParser';
 import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
-import { SDMXFetcher, SDMXVisualConfig, VisualRenderStatus } from "../types";
+import { SDMXFetcher, SDMXTheme, SDMXVisualConfig, VisualRenderStatus } from "../types";
 import { SDMXRenderError, toSDMXRenderError } from "../../errors";
 import { computeRenderStats } from "../../utils/renderStats";
+import { resolveNumberLocale } from "../../utils/theme";
 import { createTransport, FetchTelemetry } from "../../utils/transport";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
 
@@ -24,9 +25,12 @@ interface ValueProps extends React.HTMLAttributes<HTMLDivElement> {
     renderLoading?: (visualId: string) => React.ReactNode;
     renderEmpty?: (visualId: string) => React.ReactNode;
     renderError?: (error: SDMXRenderError) => React.ReactNode;
+    theme?: SDMXTheme;
 }
 
-const Value = ({ config, placeholder, callback, language, fetcher, onVisualRender, onDataFetch, renderLoading, renderEmpty, renderError: renderErrorSlot, ...props }: ValueProps) => {
+const Value = ({ config, placeholder, callback, language, fetcher, onVisualRender, onDataFetch, renderLoading, renderEmpty, renderError: renderErrorSlot, theme, ...props }: ValueProps) => {
+
+    const numberLocale = resolveNumberLocale(theme, language);
 
     const [valueElement, setValueElement] = useState(<span>Loading...</span>)
     const [popupStr, setPopupStr] = useState<string>("")
@@ -122,7 +126,7 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
         return '4em';
     };
 
-    const formatValue = (valueStr: any, config: any, data: any, attributes: any, language: string) => {
+    const formatValue = (valueStr: any, config: any, data: any, attributes: any, language: string, numberLocale: string) => {
         if (config['decimals']) {
             const decimalNumber = Number(parseOperandTextExpr(config['decimals'], data[0], attributes));
             valueStr = Number(valueStr).toFixed(decimalNumber);
@@ -145,11 +149,11 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
                 valueUnder = true;
             }
         }
-        const valueSize = config.adaptiveTextSize ? calculateFontSize(valueStr.toLocaleString(language)) : '4em';
+        const valueSize = config.adaptiveTextSize ? calculateFontSize(valueStr.toLocaleString(numberLocale)) : '4em';
         const unitSize = ( config.adaptiveTextSize && valueUnder ) ? calculateFontSize(valueLabel) : '4em';
         return (
             <>
-            <span className="lh-1" style={{fontSize: valueSize, cursor: "default"}}>{valueStr.toLocaleString(language)}</span>
+            <span className="lh-1" style={{fontSize: valueSize, cursor: "default"}}>{valueStr.toLocaleString(numberLocale)}</span>
             {
                 valueUnder && <span style={{fontSize: unitSize, cursor: "default"}}>{valueLabel}</span>
             }
@@ -227,7 +231,7 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
                             }
                         })
                         .filter((item: any) => item); // count number of true
-                    setValueElement(formatValue(countData.length, config, countData, attributes, language));
+                    setValueElement(formatValue(countData.length, config, countData, attributes, language, numberLocale));
                     setPopupStr(countData.map((item: any) => item[config.xAxisConcept]).join(', '))
                 } else if (dataObj.operator === "expr") {
                     const scope: Scope = {x0: valueStr}
@@ -242,12 +246,12 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
                             }
                         })
                         valueStr = expr?.evaluate(scope)
-                        setValueElement(formatValue(valueStr, config, data, attributes, language));
+                        setValueElement(formatValue(valueStr, config, data, attributes, language, numberLocale));
                         setPopupStr(data[0][config.xAxisConcept])
                     })
                 }
             } else {
-                setValueElement(formatValue(valueStr, config, data, attributes, language));
+                setValueElement(formatValue(valueStr, config, data, attributes, language, numberLocale));
                 setPopupStr(data[0][config.xAxisConcept])
             }
             
