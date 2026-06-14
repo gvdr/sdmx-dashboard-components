@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import parse from "html-react-parser";
 import { parseOperandTextExpr, parseTextExpr } from '../../utils/parseTextExpr';
-// @ts-ignore
-import { SDMXParser } from 'sdmx-json-parser';
+import { SDMXParser } from '../../utils/sdmxParser';
 import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";

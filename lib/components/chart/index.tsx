@@ -3,16 +3,15 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { HighchartsReact } from "highcharts-react-official";
 import Highcharts from 'highcharts';
-import highchartsMore from "highcharts/highcharts-more";
-import highchartsExporting from "highcharts/modules/exporting";
-import highchartsAccessibility from "highcharts/modules/accessibility";
-import highchartsExportData from "highcharts/modules/export-data";
-import highchartsDumbbell from "highcharts/modules/dumbbell"
-import highchartsDrilldown from "highcharts/modules/drilldown"
-import highchartsLollipop from "highcharts/modules/lollipop"
-import highchartsTreemap from "highcharts/modules/treemap"
-// @ts-ignore
-import { SDMXParser } from 'sdmx-json-parser';
+import highchartsMore from "highcharts/highcharts-more.js";
+import highchartsExporting from "highcharts/modules/exporting.js";
+import highchartsAccessibility from "highcharts/modules/accessibility.js";
+import highchartsExportData from "highcharts/modules/export-data.js";
+import highchartsDumbbell from "highcharts/modules/dumbbell.js"
+import highchartsDrilldown from "highcharts/modules/drilldown.js"
+import highchartsLollipop from "highcharts/modules/lollipop.js"
+import highchartsTreemap from "highcharts/modules/treemap.js"
+import { SDMXParser } from '../../utils/sdmxParser';
 import { parseTextExpr } from '../../utils/parseTextExpr';
 import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { parseDate } from "../../utils/parseDate";
@@ -29,7 +28,14 @@ import { AlignValue } from "highcharts";
 import { merge } from "ts-deepmerge";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
 
-if (typeof Highcharts === 'object') {
+// Highcharts feature modules are registered lazily on first client render
+// rather than at import time, so the module is side-effect-free and can be
+// imported in a server (no-DOM) process without initialising the engine.
+let highchartsModulesRegistered = false;
+const ensureHighchartsModules = () => {
+    if (highchartsModulesRegistered || typeof Highcharts !== 'object') {
+        return;
+    }
     highchartsMore(Highcharts)
     highchartsExporting(Highcharts);
     highchartsAccessibility(Highcharts);
@@ -38,6 +44,7 @@ if (typeof Highcharts === 'object') {
     highchartsLollipop(Highcharts);
     highchartsExportData(Highcharts);
     highchartsTreemap(Highcharts);
+    highchartsModulesRegistered = true;
 }
 
 interface ChartProps extends HighchartsReact.Props {
@@ -143,6 +150,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
 
     useEffect(() => {
 
+        ensureHighchartsModules()
         setRenderError(null)
         reportRenderStatus({ visualId: config.id, status: 'loading' })
 

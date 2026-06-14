@@ -9,7 +9,7 @@ import { SDMXDashboardConfig, SDMXFetcher, VisualInteraction, VisualRenderStatus
 import { SDMXRenderError } from '../errors';
 import { createTransport, FetchTelemetry } from '../utils/transport';
 
-const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", fetcher, onVisualRender, onRenderComplete, onDataFetch, onUserInteraction, renderLoading, renderEmpty, renderError }: {
+const Dashboard = ({ url, config, lang: langProp, fetcher, onVisualRender, onRenderComplete, onDataFetch, onUserInteraction, renderLoading, renderEmpty, renderError }: {
     url?: string,
     config?: SDMXDashboardConfig,
     lang?: string,
@@ -22,6 +22,10 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
     renderEmpty?: (visualId: string) => React.ReactNode,
     renderError?: (error: SDMXRenderError) => React.ReactNode
 }) => {
+
+    // resolve the language default without touching `document` at call time,
+    // so the component can render in a server (no-DOM) process
+    const lang = langProp ?? (typeof document !== 'undefined' ? document.documentElement.lang || "en" : "en");
 
     const [pageData, setPageData] = useState<SDMXDashboardConfig>();
 
