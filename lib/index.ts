@@ -17,6 +17,7 @@ export type {
     SDMXMapConfig,
     SDMXTableConfig,
     SDMXTextConfig,
-    SDMXColorPalette
+    SDMXColorPalette,
+    SDMXTheme
 } from './components/types';
 

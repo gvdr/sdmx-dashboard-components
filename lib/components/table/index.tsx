@@ -4,11 +4,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SDMXParser } from "../../utils/sdmxParser";
 import { parseDataExpr } from "../../utils/parseDataExpr";
 import { parseTextExpr } from "../../utils/parseTextExpr";
-import { SDMXFetcher, SDMXTableConfig, VisualRenderStatus } from "../types";
+import { SDMXFetcher, SDMXTableConfig, SDMXTheme, VisualRenderStatus } from "../types";
 import { SDMXRenderError, toSDMXRenderError } from "../../errors";
 import { computeRenderStats } from "../../utils/renderStats";
 import { createTransport, FetchTelemetry } from "../../utils/transport";
 import { pivotTable, PivotTable, SINGLE_VALUE_COLUMN } from "../../utils/pivotTable";
+import { resolveNumberLocale } from "../../utils/theme";
 
 interface TableProps extends React.HTMLAttributes<HTMLDivElement> {
     config: SDMXTableConfig;
@@ -20,9 +21,12 @@ interface TableProps extends React.HTMLAttributes<HTMLDivElement> {
     renderLoading?: (visualId: string) => React.ReactNode;
     renderEmpty?: (visualId: string) => React.ReactNode;
     renderError?: (error: SDMXRenderError) => React.ReactNode;
+    theme?: SDMXTheme;
 }
 
-const Table = ({ config, language, placeholder, fetcher, onVisualRender, onDataFetch, renderLoading, renderEmpty, renderError: renderErrorSlot, ...props }: TableProps) => {
+const Table = ({ config, language, placeholder, fetcher, onVisualRender, onDataFetch, renderLoading, renderEmpty, renderError: renderErrorSlot, theme, ...props }: TableProps) => {
+
+    const numberLocale = resolveNumberLocale(theme, language);
 
     const [isLoading, setIsLoading] = useState(true)
     const [renderError, setRenderError] = useState<SDMXRenderError | null>(null)
@@ -149,7 +153,7 @@ const Table = ({ config, language, placeholder, fetcher, onVisualRender, onDataF
         if (value === undefined || value === null) {
             return '';
         }
-        return value.toLocaleString(language);
+        return value.toLocaleString(numberLocale);
     }
 
     return (

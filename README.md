@@ -124,6 +124,22 @@ The configuration types are exported from the package root: `SDMXDashboardConfig
 
 > **Note on `extraOptions`:** `extraOptions` passes raw Highcharts options straight through and is typed `Record<string, unknown>`. It is engine-bound and not supported across major versions (a charting-engine change can break stored `extraOptions`). Prefer the semantic config fields where they exist.
 
+### Global theming
+
+A `theme` prop applies institutional branding once at the dashboard level (and is accepted by the standalone components), so styling no longer has to be repeated per visual or applied through internal engine class names:
+
+```typescript
+const spcTheme: SDMXTheme = {
+  palette: ['#0a4595', '#e63946', '#2a9d8f'], // series colours in order
+  fontFamily: { display: 'Georgia, serif', data: 'Inter, sans-serif' },
+  numberFormat: { locale: 'en-NZ', decimalSeparator: '.' }
+};
+
+<SDMXDashboard config={config} theme={spcTheme} />
+```
+
+A per-visual `colorPalette` keeps precedence over the theme palette, and any field the theme leaves unset falls back to the engine default. `numberFormat.locale` overrides the component language for number formatting (values, data labels, table cells) while leaving translated text on the component language.
+
 ### Engine neutrality
 
 Most of the configuration schema is engine-neutral, so the underlying charting engine can change without breaking consumers who stay on the documented API. Two things to know:

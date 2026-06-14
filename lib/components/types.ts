@@ -4,6 +4,20 @@ import { SDMXRenderError } from '../errors';
 // authentication, proxying, caching, or retries to every data request
 export type SDMXFetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
+// engine-neutral, dashboard-level styling surface; per-visual colorPalette
+// keeps precedence over the theme palette
+export type SDMXTheme = {
+    palette?: string[], // series colours in order
+    fontFamily?: {
+        display?: string, // titles and headings
+        data?: string // data labels, axes, table cells
+    },
+    numberFormat?: {
+        locale?: string, // overrides the component language for number formatting
+        decimalSeparator?: string
+    }
+}
+
 // user interaction on a rendered visual; `concepts` maps dimension id to
 // code at the interaction point, enough to reconstruct the SDMX query for
 // the clicked slice without any engine knowledge on the consumer side

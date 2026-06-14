@@ -5,11 +5,11 @@ import Cell from './cell';
 import Text from './text';
 
 import '../global.module.css';
-import { SDMXDashboardConfig, SDMXFetcher, VisualInteraction, VisualRenderStatus } from './types';
+import { SDMXDashboardConfig, SDMXFetcher, SDMXTheme, VisualInteraction, VisualRenderStatus } from './types';
 import { SDMXRenderError } from '../errors';
 import { createTransport, FetchTelemetry } from '../utils/transport';
 
-const Dashboard = ({ url, config, lang: langProp, fetcher, onVisualRender, onRenderComplete, onDataFetch, onUserInteraction, renderLoading, renderEmpty, renderError }: {
+const Dashboard = ({ url, config, lang: langProp, fetcher, onVisualRender, onRenderComplete, onDataFetch, onUserInteraction, renderLoading, renderEmpty, renderError, theme }: {
     url?: string,
     config?: SDMXDashboardConfig,
     lang?: string,
@@ -20,7 +20,8 @@ const Dashboard = ({ url, config, lang: langProp, fetcher, onVisualRender, onRen
     onUserInteraction?: (interaction: VisualInteraction) => void,
     renderLoading?: (visualId: string) => React.ReactNode,
     renderEmpty?: (visualId: string) => React.ReactNode,
-    renderError?: (error: SDMXRenderError) => React.ReactNode
+    renderError?: (error: SDMXRenderError) => React.ReactNode,
+    theme?: SDMXTheme
 }) => {
 
     // resolve the language default without touching `document` at call time,
@@ -145,7 +146,7 @@ const Dashboard = ({ url, config, lang: langProp, fetcher, onVisualRender, onRen
                     <div key={`row-${index_row}`} className="row mb-3 display-flex">
                       {
                         row.columns.map((cell: any) => (
-                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={transport} onVisualRender={handleVisualRender} onUserInteraction={onUserInteraction} renderLoading={renderLoading} renderEmpty={renderEmpty} renderError={renderError} />
+                          <Cell key={`col-${cell.id}`} className={`col-md-${Math.ceil((12/(pageData.colCount || 3))*cell.colSize)}`} language={lang} config={cell} fetcher={transport} onVisualRender={handleVisualRender} onUserInteraction={onUserInteraction} renderLoading={renderLoading} renderEmpty={renderEmpty} renderError={renderError} theme={theme} />
                         ))
                       }
                     </div>

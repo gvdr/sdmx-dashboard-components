@@ -17,13 +17,14 @@ import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { parseDate } from "../../utils/parseDate";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
-import { SDMXChartConfig, SDMXFetcher, VisualInteraction, VisualRenderStatus } from "../types";
+import { SDMXChartConfig, SDMXFetcher, SDMXTheme, VisualInteraction, VisualRenderStatus } from "../types";
 import { SDMXRenderError, toSDMXRenderError } from "../../errors";
 import { validateSeriesDimensions } from "../../utils/validateChartData";
 import { computeRenderStats } from "../../utils/renderStats";
 import { observeContainerResize } from "../../utils/observeContainerResize";
 import { createTransport, FetchTelemetry } from "../../utils/transport";
 import { buildInteractionConcepts, buildSeriesConcepts } from "../../utils/interaction";
+import { themeChartOptions, resolveNumberLocale } from "../../utils/theme";
 import { AlignValue } from "highcharts";
 import { merge } from "ts-deepmerge";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
@@ -60,9 +61,10 @@ interface ChartProps extends HighchartsReact.Props {
     renderEmpty?: (visualId: string) => React.ReactNode;
     renderError?: (error: SDMXRenderError) => React.ReactNode;
     autoResize?: boolean;
+    theme?: SDMXTheme;
 }
 
-const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, onDataFetch, onUserInteraction, renderLoading, renderEmpty, renderError: renderErrorSlot, autoResize = true, ...props }: ChartProps) => {
+const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRender, onDataFetch, onUserInteraction, renderLoading, renderEmpty, renderError: renderErrorSlot, autoResize = true, theme, ...props }: ChartProps) => {
 
     const [hcOptions, setHcOptions] = useState<Highcharts.Options>({
         title: {
@@ -153,6 +155,8 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
         ensureHighchartsModules()
         setRenderError(null)
         reportRenderStatus({ visualId: config.id, status: 'loading' })
+
+        const numberLocale = resolveNumberLocale(theme, language);
 
         const dataObjs = parseDataExpr(config.data);
 
@@ -646,7 +650,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                                         if (config?.unit?.text === '%') {
                                             return `${this.point?.name}: ${this.point?.percentage.toFixed(config.decimals)} %`
                                         } else {
-                                            return `${this.point?.y?.toLocaleString(language)}`
+                                            return `${this.point?.y?.toLocaleString(numberLocale)}`
                                         }
                                     }
                                 }
@@ -693,7 +697,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                                         return `${this.point?.percentage.toFixed(config.decimals)} %`
                                     }
                                 } else {
-                                    return `${this.point?.y?.toLocaleString(language)}`
+                                    return `${this.point?.y?.toLocaleString(numberLocale)}`
                                 }
                             }
                         }
@@ -725,7 +729,9 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                 axisTitleOptions.yAxis = { title: { text: yAxisTitleText } };
             }
 
-            setHcOptions(merge({
+            // theme is the lowest precedence: per-visual colorPalette (explicit
+            // series colours) and config fields override it
+            setHcOptions(merge(themeChartOptions(theme), {
                 plotOptions: {
                     series: {
                         events: {
@@ -806,7 +812,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                 error: renderError
             })
         })
-    }, [config, language, fetcher]);
+    }, [config, language, fetcher, theme]);
 
     const chart: React.ReactNode =
         <HighchartsReact
