@@ -51,7 +51,7 @@ export type SDMXColorPalette = {
 export type SDMXVisualConfig = {
     id: string, // unique identifier
     colSize?: number, // size of the visualization in columns (when integrated in a dashboard)
-    type: "line" | "bar" | "pie" | "column" | "lollipop" | "treemap" | "value" | "drilldown" | "note" | "map", // type of the visualization (available types: line, bar, pie, column, lollipop, treemap, value, drilldown, note, map) |
+    type: "line" | "bar" | "pie" | "column" | "lollipop" | "treemap" | "value" | "drilldown" | "note" | "map" | "table", // type of the visualization (available types: line, bar, pie, column, lollipop, treemap, value, drilldown, note, map, table) |
     title?: SDMXTextConfig, // title of the visualization
     subtitle?: SDMXTextConfig, // subtitle of the visualization
     note?: SDMXTextConfig, // note of the visualization
@@ -84,7 +84,7 @@ export type SDMXChartConfig = {
         },
     },
     colorPalette?: SDMXColorPalette, // color palette used for the visualization`
-    extraOptions?: any // extra options for the visualization
+    extraOptions?: Record<string, unknown> // engine-bound extra options for the visualization (see README: unsupported across major versions)
 } & SDMXVisualConfig
 
 export type SDMXMapConfig = {
@@ -93,15 +93,25 @@ export type SDMXMapConfig = {
         concept?: string, // SDMX concept of the legend
         location?:"top" | "bottom" | "left" | "right" | "none", // location of the legend
     },
-    extraOptions?: any // extra options for the visualization
+    extraOptions?: Record<string, unknown> // engine-bound extra options for the visualization (see README: unsupported across major versions)
 } & SDMXVisualConfig
 
 
+export type SDMXTableConfig = {
+    legend?: {
+        concept?: string, // SDMX concept pivoted across table columns
+    },
+} & SDMXVisualConfig
+
+export type SDMXDashboardRow = {
+    columns?: Array<SDMXVisualConfig>, // visuals in this row
+    /** @deprecated misspelling kept as an alias for one major version; use `columns` */
+    colums?: Array<SDMXVisualConfig>
+}
+
 export type SDMXDashboardConfig = {
     id: string, // unique identifier
-    rows: Array<{
-        colums: Array<SDMXVisualConfig>
-    }>,
+    rows: Array<SDMXDashboardRow>,
     languages?: Array<string>, // languages available for the dashboard
     colCount?: number, // number of columns in the dashboard
     header?: {

@@ -4,7 +4,8 @@ import Value from '../value';
 import Chart from '../chart';
 import { ErrorBoundary } from 'react-error-boundary';
 import MapComponent from '../map';
-import { SDMXChartConfig, SDMXFetcher, SDMXMapConfig, SDMXVisualConfig, VisualInteraction, VisualRenderStatus } from '../types';
+import TableComponent from '../table';
+import { SDMXChartConfig, SDMXFetcher, SDMXMapConfig, SDMXTableConfig, SDMXVisualConfig, VisualInteraction, VisualRenderStatus } from '../types';
 import { SDMXRenderError } from '../../errors';
 import { Map } from 'ol';
 
@@ -76,6 +77,17 @@ const Cell = ({
                     key={language}
                     language={language}
                     callback={callback}
+                    fetcher={fetcher}
+                    onVisualRender={onVisualRender}
+                    renderLoading={renderLoading}
+                    renderEmpty={renderEmpty}
+                    renderError={renderError}
+                />
+            case 'table':
+                return <TableComponent
+                    config={config as SDMXTableConfig}
+                    key={language}
+                    language={language}
                     fetcher={fetcher}
                     onVisualRender={onVisualRender}
                     renderLoading={renderLoading}
