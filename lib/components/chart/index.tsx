@@ -25,6 +25,7 @@ import { observeContainerResize } from "../../utils/observeContainerResize";
 import { createTransport, FetchTelemetry } from "../../utils/transport";
 import { buildInteractionConcepts, buildSeriesConcepts } from "../../utils/interaction";
 import { themeChartOptions, resolveNumberLocale } from "../../utils/theme";
+import HiddenDataTable from "../hiddenDataTable";
 import { AlignValue } from "highcharts";
 import { merge } from "ts-deepmerge";
 import { parse as parseExpr, EvalAstFactory, Scope } from "jexpr";
@@ -74,6 +75,8 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
 
     const [isLoading, setIsLoading] = useState(true)
     const [renderError, setRenderError] = useState<Error | null>(null)
+    // observations behind the chart, for the visually hidden accessible table
+    const [a11yTable, setA11yTable] = useState<{ rows: any[], dimensions: any[], xAxisConcept: string, legendConcept?: string, caption: string, valueHeader: string, numberLocale: string } | null>(null)
 
     const chartComponentRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -154,6 +157,7 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
 
         ensureHighchartsModules()
         setRenderError(null)
+        setA11yTable(null)
         reportRenderStatus({ visualId: config.id, status: 'loading' })
 
         const numberLocale = resolveNumberLocale(theme, language);
@@ -268,6 +272,9 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
         // dimension structures for the interaction handlers; charts with
         // several datasets share one structure in practice, the last wins
         let interactionDimensions: any[] = [];
+        // resolved x-axis and legend concepts for the accessible data table
+        let a11yXAxisConcept = '';
+        let a11yLegendConcept: string | undefined;
         Promise.all(dataPromises).then((sdmxObjs) => {
             sdmxObjs.forEach((sdmxObj: any) => {
                 const data = sdmxObj[0];
@@ -677,6 +684,8 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                         seriesData[0].data.push(...yAxisValue);
                     }
                 }
+                a11yXAxisConcept = xAxisConcept || (chartType === 'line' ? 'TIME_PERIOD' : '');
+                a11yLegendConcept = legendConcept || undefined;
             })
             let legendAlign: AlignValue = "center"
             if (config?.legend?.location) {
@@ -795,6 +804,16 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                 series: seriesData
             }, axisTitleOptions, hcExtraOptions || {}, config.extraOptions || {}));
 
+            setA11yTable({
+                rows: allRows,
+                dimensions: interactionDimensions,
+                xAxisConcept: a11yXAxisConcept,
+                legendConcept: a11yLegendConcept,
+                caption: titleText || config.id,
+                valueHeader: config.unit?.text || 'Value',
+                numberLocale
+            })
+
             reportRenderStatus({
                 visualId: config.id,
                 status: 'rendered',
@@ -843,6 +862,17 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
             {isLoading ? (renderLoading ? renderLoading(config.id) : placeholder) || <div className="opacity-50 d-table-cell align-middle" style={{ "height": 400, "width": 600 }}>Loading...</div>
             :  config.dataLink ? <a href={ config.dataLink} target="_blank" rel="noreferrer">{chart}</a>
                 : chart
+            }
+            {a11yTable &&
+                <HiddenDataTable
+                    data={a11yTable.rows}
+                    dimensions={a11yTable.dimensions}
+                    xAxisConcept={a11yTable.xAxisConcept}
+                    legendConcept={a11yTable.legendConcept}
+                    caption={a11yTable.caption}
+                    valueHeader={a11yTable.valueHeader}
+                    numberLocale={a11yTable.numberLocale}
+                />
             }
         </>
     )

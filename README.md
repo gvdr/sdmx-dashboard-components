@@ -124,6 +124,16 @@ The configuration types are exported from the package root: `SDMXDashboardConfig
 
 > **Note on `extraOptions`:** `extraOptions` passes raw Highcharts options straight through and is typed `Record<string, unknown>`. It is engine-bound and not supported across major versions (a charting-engine change can break stored `extraOptions`). Prefer the semantic config fields where they exist.
 
+### Accessibility
+
+The components target WCAG 2.1 AA:
+
+- The charting engine's accessibility module is enabled, exposing the chart to assistive technology and adding keyboard support.
+- Every chart also renders a visually hidden data table holding the same observations, so a screen reader can read the data even where the chart vocabulary falls short. The native `table` visual provides the same data as a visible table.
+- Title and unit configuration flow into the accessible description of each visual.
+
+**Keyboard behaviour** (provided by the charting engine's accessibility module): when a chart is focused, press `Tab` to move focus into it, the arrow keys to move between data points within a series, and `Tab` again to move to the next series or out of the chart. The visually hidden data table is reachable in normal reading and table-navigation order.
+
 ### Global theming
 
 A `theme` prop applies institutional branding once at the dashboard level (and is accepted by the standalone components), so styling no longer has to be repeated per visual or applied through internal engine class names:
