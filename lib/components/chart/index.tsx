@@ -185,7 +185,9 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
             const parser = new SDMXParser();
             return parser.getDatasets(dataObj.dataFlowUrl, {
                 headers: new Headers({
-                    Accept: "application/vnd.sdmx.data+json;version=2.0.0",
+                    // no SDMX Accept header: format=jsondata (added by the
+                    // parser) selects the dialect; a v2.0 Accept header makes
+                    // ECB 406 (see §5 of the improvement doc)
                     "Accept-Language": language
                 }),
                 fetcher: transport

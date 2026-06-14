@@ -174,7 +174,8 @@ const Value = ({ config, placeholder, callback, language, fetcher, onVisualRende
         const dataFlowUrl = dataObj.dataFlowUrl;
         sdmxParser.getDatasets(dataFlowUrl, {
             headers: new Headers({
-                Accept: "application/vnd.sdmx.data+json;version=2.0.0",
+                // no SDMX Accept header: format=jsondata selects the dialect;
+                // a v2.0 Accept header makes ECB 406 (see §5 of the doc)
                 "Accept-Language": language
             }),
             fetcher: transport
