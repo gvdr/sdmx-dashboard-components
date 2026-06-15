@@ -125,11 +125,18 @@ const Dashboard = ({ url, config, lang: langProp, fetcher, onVisualRender, onRen
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pageData, lang])
 
+    // key on config content, not object identity: a consumer passing an
+    // inline config={{...}} literal (new object each render) would otherwise
+    // setPageData on every render, churning the transport and re-fetching.
+    // configKey is computed from the incoming prop before normalizeConfig
+    // mutates it, so successive identical literals produce the same key.
+    const configKey = config ? JSON.stringify(config) : undefined
     useEffect(() => {
       if(config) {
         setPageData(normalizeConfig(config))
       }
-    }, [config])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [configKey])
 
     return (
         <>

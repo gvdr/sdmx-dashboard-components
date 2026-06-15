@@ -46,10 +46,13 @@ const Table = ({ config, language, placeholder, fetcher, onVisualRender, onDataF
     useEffect(() => {
         onDataFetchRef.current = onDataFetch;
     }, [onDataFetch]);
+    // key effects on config content, not object identity, so inline config
+    // literals do not cause re-fetch loops (see chart for the rationale)
+    const configKey = JSON.stringify(config);
     const transport = useMemo(
         () => createTransport(fetcher, (telemetry) => onDataFetchRef.current?.(telemetry)),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [config, language, fetcher]
+        [configKey, language, fetcher]
     );
 
     useEffect(() => {
@@ -124,7 +127,8 @@ const Table = ({ config, language, placeholder, fetcher, onVisualRender, onDataF
                 error: tableError
             })
         });
-    }, [config, language, transport]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [configKey, language, transport]);
 
     if (renderError) {
         if (renderError.code === 'ERR_EMPTY' && renderEmpty) {

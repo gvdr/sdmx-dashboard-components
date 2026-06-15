@@ -99,12 +99,21 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
     useEffect(() => {
         onUserInteractionRef.current = onUserInteraction;
     }, [onUserInteraction]);
+
+    // Key effects on the config's content, not its object identity, so a
+    // consumer passing an inline config={{...}} literal (a new object every
+    // render) does not re-fetch on every render — which, combined with a
+    // state-updating callback, would loop. A genuine content change produces
+    // a different key and re-runs as expected.
+    const configKey = JSON.stringify(config);
+    const themeKey = JSON.stringify(theme);
+
     // dedup, cache, and retry per rendered config; a dashboard-provided
     // transport passes through unchanged so visuals share its cache
     const transport = useMemo(
         () => createTransport(fetcher, (telemetry) => onDataFetchRef.current?.(telemetry)),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [config, language, fetcher]
+        [configKey, language, fetcher]
     );
 
     // re-measure when the container resizes without a window resize event
@@ -833,7 +842,8 @@ const Chart = ({ config, language, placeholder, callback, fetcher, onVisualRende
                 error: renderError
             })
         })
-    }, [config, language, fetcher, theme]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [configKey, language, fetcher, themeKey]);
 
     const chart: React.ReactNode =
         <HighchartsReact
