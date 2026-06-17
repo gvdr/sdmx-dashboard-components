@@ -85,6 +85,37 @@ describe('createTransport', () => {
         expect(await response.text()).toBe('payload');
     });
 
+    it('keys the cache by Accept header so negotiation retries are not replayed', async () => {
+        // mirrors the parser's negotiation: same URL, different Accept per attempt.
+        // Keying on URL alone would replay the first (406) to the second.
+        const base = vi.fn(async (_url: string, init?: RequestInit) => {
+            const accept = new Headers(init?.headers || {}).get('accept');
+            return accept ? okResponse('json-payload', 200) : okResponse('<err/>', 406);
+        });
+        const transport = createTransport(base);
+
+        const bare = await transport('https://sdmx.example/data/ECB'); // no Accept -> 406
+        const withAccept = await transport('https://sdmx.example/data/ECB', { headers: { Accept: 'application/vnd.sdmx.data+json;version=1.0.0' } });
+
+        expect(base).toHaveBeenCalledTimes(2);            // not deduped across different Accept
+        expect(bare.status).toBe(406);
+        expect(withAccept.status).toBe(200);
+        expect(await withAccept.text()).toBe('json-payload');
+    });
+
+    it('does not cache non-2xx responses (a later identical call re-fetches)', async () => {
+        const base = vi.fn()
+            .mockResolvedValueOnce(okResponse('<err/>', 406))
+            .mockResolvedValueOnce(okResponse('payload', 200));
+        const transport = createTransport(base);
+
+        const first = await transport('https://sdmx.example/data/A');
+        expect(first.status).toBe(406);
+        const second = await transport('https://sdmx.example/data/A'); // same key, but 406 wasn't cached
+        expect(base).toHaveBeenCalledTimes(2);
+        expect(second.status).toBe(200);
+    });
+
     it('returns an existing transport unchanged instead of stacking', () => {
         const inner = createTransport(vi.fn());
         const outer = createTransport(inner, vi.fn());

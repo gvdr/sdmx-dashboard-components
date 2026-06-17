@@ -29,13 +29,25 @@ const hostOf = (url: string): string => {
     }
 }
 
+// Dedup/cache key. It MUST include the negotiated headers, not just the URL:
+// the parser retries the same URL with different `Accept` headers to find the
+// dialect a provider serves (e.g. ECB needs bare format=jsondata, BIS needs
+// Accept v1.0). Keying on URL alone would replay the first attempt's response
+// to every retry and defeat that negotiation. Accept-Language is included too
+// because it changes the response language.
+const requestKey = (url: string, init?: RequestInit): string => {
+    const headers = new Headers(init?.headers || {});
+    return [url, headers.get('accept') || '', headers.get('accept-language') || ''].join('\n');
+}
+
 /**
  * Wrap a fetcher with the behaviours SDMX endpoint instability calls for:
  *
- *  - identical in-flight URLs share one network request, and settled
- *    responses are cached for the lifetime of the transport (the dashboard
- *    creates one transport per rendered config, so a config change
- *    invalidates);
+ *  - identical in-flight requests (same URL + Accept + Accept-Language) share
+ *    one network request, and successful (2xx) responses are cached for the
+ *    lifetime of the transport (the dashboard creates one transport per
+ *    rendered config, so a config change invalidates). Non-2xx responses are
+ *    not cached, so the parser's Accept-header negotiation is not defeated;
  *  - network errors and 5xx responses are retried once after a short
  *    backoff; 4xx responses fail immediately;
  *  - every settled request is reported through onDataFetch, cache hits
@@ -81,18 +93,19 @@ export const createTransport = (
 
     const transport: SDMXFetcher = async (url, init) => {
         const startedAt = Date.now();
-        const inFlight = exchanges.get(url);
+        const key = requestKey(url, init);
+        const inFlight = exchanges.get(key);
         const fromCache = inFlight !== undefined;
         const exchange = inFlight ?? runExchange(url, init);
         if (!fromCache) {
-            exchanges.set(url, exchange);
+            exchanges.set(key, exchange);
         }
         let settled: SettledExchange;
         try {
             settled = await exchange;
         } catch (error) {
             // failures are not cached: a later caller gets a fresh attempt
-            exchanges.delete(url);
+            exchanges.delete(key);
             onDataFetch?.({
                 url,
                 host: hostOf(url),
@@ -102,6 +115,12 @@ export const createTransport = (
                 retried: !fromCache
             });
             throw error;
+        }
+        // only 2xx responses are cached; a non-2xx (e.g. a 406 from a
+        // negotiation probe, or a transient 4xx) must not be replayed to a
+        // later request that may use a different Accept and succeed
+        if (settled.status < 200 || settled.status >= 300) {
+            exchanges.delete(key);
         }
         onDataFetch?.({
             url,

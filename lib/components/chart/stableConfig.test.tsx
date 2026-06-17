@@ -50,7 +50,7 @@ const Harness = ({ data, rerenders }: { data: string, rerenders: number }) => {
 
 describe('stable config key (anti-loop)', () => {
     it('does not re-fetch when re-rendered with new-but-identical config objects', async () => {
-        const fetchMock = vi.fn(async () => ({ status: 200, text: async () => JSON.stringify(lineResponse()) }));
+        const fetchMock = vi.fn(async () => ({ status: 200, headers: { get: (h) => (h.toLowerCase() === "content-type" ? "application/vnd.sdmx.data+json" : null) }, text: async () => JSON.stringify(lineResponse()) }));
         vi.stubGlobal('fetch', fetchMock);
 
         render(<Harness data="https://example.org/rest/data/X,Y,1.0/all" rerenders={8} />);
@@ -63,7 +63,7 @@ describe('stable config key (anti-loop)', () => {
     });
 
     it('re-fetches when the config content actually changes', async () => {
-        const fetchMock = vi.fn(async () => ({ status: 200, text: async () => JSON.stringify(lineResponse()) }));
+        const fetchMock = vi.fn(async () => ({ status: 200, headers: { get: (h) => (h.toLowerCase() === "content-type" ? "application/vnd.sdmx.data+json" : null) }, text: async () => JSON.stringify(lineResponse()) }));
         vi.stubGlobal('fetch', fetchMock);
 
         const cfg = (data: string): SDMXChartConfig => ({ id: 'c', type: 'line', xAxisConcept: 'TIME_PERIOD', legend: { concept: 'GEO_PICT' }, data });
