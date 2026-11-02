@@ -7,6 +7,7 @@ import { SDMXParser } from 'sdmx-json-parser';
 import { parseTextExpr } from '../../utils/parseTextExpr';
 import { fetchDataExprOperand, parseDataExpr } from '../../utils/parseDataExpr';
 import { dataRequestHeaders } from '../../utils/requestHeaders';
+import { SDMXRenderError, emptyDataError } from '../../errors';
 import { parse as parseExpr, EvalAstFactory, Scope } from 'jexpr';
 import type { BuiltChart, ChartBuilder, ChartContext, ChartType, ParsedDataset } from '../../utils/chartHelpers';
 import { buildEchartsTitle } from '../../utils/chartHelpers';
@@ -38,8 +39,7 @@ const resolveText = (text: SDMXChartConfig['title'], dimensions: any[], language
 };
 
 export const loadDatasets = async (
-  dataExpression: SDMXChartConfig['data'],
-  xAxisConcept: SDMXChartConfig['xAxisConcept'],
+  { id, data: dataExpression, xAxisConcept }: Pick<SDMXChartConfig, 'id' | 'data' | 'xAxisConcept'>,
   language: string
 ): Promise<ParsedDataset[]> => {
   const dataObjs = parseDataExpr(dataExpression);
@@ -49,6 +49,7 @@ export const loadDatasets = async (
       .getDatasets(dataObj.dataFlowUrl, { headers: dataRequestHeaders(language) })
       .then(() => {
         const data = parser.getData();
+        if (data.length === 0) throw emptyDataError(id, dataObj.dataFlowUrl);
         const attributes = parser.getAttributes();
         if (dataObj.alternateLabel) {
           data.forEach((_item: any, index: number, data: any[]) => {
@@ -126,15 +127,24 @@ const createChartContext = (
     titleText = datasetTitleText;
     subtitleText = datasetSubtitleText;
 
+    const availableConcepts = dimensions.map((d: any) => d.id);
     if (config.xAxisConcept && config.xAxisConcept !== 'MULTI') {
       if (!dimensions.find((d: any) => d.id === config.xAxisConcept)) {
-        throw new Error(`xAxisConcept ${config.xAxisConcept} not found in dataflow`);
+        throw new SDMXRenderError(
+          'ERR_CONCEPT_NOT_FOUND',
+          `xAxisConcept ${config.xAxisConcept} not found in the dataflow. Available concepts: ${availableConcepts.join(', ')}. Fix: set xAxisConcept to one of the available concepts.`,
+          { detail: { concept: config.xAxisConcept, role: 'xAxisConcept', available: availableConcepts } }
+        );
       }
     }
     const legendConcept = config.legend?.concept;
     if (legendConcept && legendConcept !== 'MULTI') {
       if (!dimensions.find((d: any) => d.id === legendConcept)) {
-        throw new Error(`legendConcept ${legendConcept} not found in dataflow`);
+        throw new SDMXRenderError(
+          'ERR_CONCEPT_NOT_FOUND',
+          `legendConcept ${legendConcept} not found in the dataflow. Available concepts: ${availableConcepts.join(', ')}. Fix: set legend.concept to one of the available concepts.`,
+          { detail: { concept: legendConcept, role: 'legend.concept', available: availableConcepts } }
+        );
       }
     }
 
@@ -198,5 +208,6 @@ export const buildChartOptionFromDatasets = (
     titleText: context.titleText,
     subtitleText: context.subtitleText,
     drilldown: parts.drilldown,
+    seriesCount: parts.seriesCount ?? parts.series.length,
   };
 };
