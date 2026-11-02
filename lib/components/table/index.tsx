@@ -9,11 +9,13 @@ import { loadDatasets } from '../chart/options';
 import { parseTextExpr } from '../../utils/parseTextExpr';
 import { sanitizeTooltipHtml } from '../../utils/sanitizeTooltipHtml';
 import type { ParsedDataset } from '../../utils/chartHelpers';
-import type { SDMXChartConfig, SDMXTableConfig, SDMXTableCellTooltipParams, SDMXVisualProps } from '../types';
+import type { SDMXChartConfig, SDMXTableConfig, SDMXTableCellTooltipParams, SDMXTheme, SDMXVisualProps } from '../types';
+import { resolveNumberLocale } from '../../utils/theme';
 import { SDMXRenderError, toSDMXRenderError } from '../../errors';
 import { computeRenderStats, failedRenderStatus } from '../../utils/renderStats';
 import { useLatest } from '../../utils/useLatest';
 import { useTransport } from '../../utils/transport';
+import { failureSlot } from '../../utils/slots';
 import { buildTableModel, safePaletteColor, type TableCell, type TableModel } from './model';
 import styles from './styles.module.css';
 
@@ -22,6 +24,7 @@ interface TableProps extends React.HTMLAttributes<HTMLDivElement>, SDMXVisualPro
   language: string;
   placeholder?: React.JSX.Element;
   callback?: (table: React.JSX.Element) => void;
+  theme?: SDMXTheme; // only numberFormat applies to a table
 }
 
 const alignClass = (align?: string): string =>
@@ -160,7 +163,9 @@ const renderTable = (
   );
 };
 
-const Table = ({ config, language, placeholder, callback, onVisualRender, fetcher, onDataFetch, className, style, ...props }: TableProps) => {
+// onUserInteraction is taken off the DOM props: only charts report interactions
+const Table = ({ config, language, placeholder, callback, theme, onVisualRender, fetcher, onDataFetch, renderLoading, renderEmpty, renderError, onUserInteraction: _onUserInteraction, className, style, ...props }: TableProps) => {
+  const numberLocale = resolveNumberLocale(theme, language);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<SDMXRenderError | null>(null);
   const [loadedData, setLoadedData] = useState<{
@@ -221,7 +226,7 @@ const Table = ({ config, language, placeholder, callback, onVisualRender, fetche
   useEffect(() => {
     if (!loadedData || loadedData.key !== loadKey) return;
     try {
-      const nextModel = buildTableModel(config, language, loadedData.datasets);
+      const nextModel = buildTableModel(config, numberLocale, loadedData.datasets);
       const dimensions = loadedData.datasets[0]?.dimensions ?? [];
       setModel(nextModel);
       setTitleText(resolveText(config.title, dimensions, language));
@@ -240,7 +245,7 @@ const Table = ({ config, language, placeholder, callback, onVisualRender, fetche
     }
     // config is read at its configKey; its identity alone must not rebuild
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [configKey, language, loadKey, loadedData, fail, onVisualRenderRef]);
+  }, [configKey, language, numberLocale, loadKey, loadedData, fail, onVisualRenderRef]);
 
   const content = (
     <>
@@ -299,6 +304,8 @@ const Table = ({ config, language, placeholder, callback, onVisualRender, fetche
     </>
   );
 
+  const errorSlot = error ? failureSlot(error, config.id, { renderEmpty, renderError }) : undefined;
+
   return (
     <div
       ref={containerRef}
@@ -307,13 +314,13 @@ const Table = ({ config, language, placeholder, callback, onVisualRender, fetche
       {...props}
     >
       {isLoading
-        ? placeholder || (
+        ? (renderLoading ? renderLoading(config.id) : placeholder) || (
           <div className="opacity-50 d-flex align-items-center justify-content-center" style={{ minHeight: 200 }}>
             <span>Loading...</span>
           </div>
         )
         : error
-          ? (
+          ? errorSlot !== undefined ? errorSlot : (
             <div className="sdmx-render-error text-danger" role="alert" data-error-code={error.code}>
               {error.message}
             </div>

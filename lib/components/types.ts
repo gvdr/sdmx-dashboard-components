@@ -2,10 +2,25 @@ import type { EChartsOption } from 'echarts';
 import type { ReactNode } from 'react';
 import type { SDMXRenderError } from '../errors';
 import type { FetchTelemetry } from '../utils/transport';
+import type OLMap from 'ol/Map';
 
 // drop-in replacement for the global fetch; lets consumers add
 // authentication, proxying, caching, or retries to every data request
 export type SDMXFetcher = (url: string, init?: RequestInit) => Promise<Response>;
+
+// engine-neutral styling applied once, on the dashboard or a standalone
+// visual, at the lowest precedence: a visual's colorPalette and config
+// fields win, and the ECharts theme (light or dark) fills in the rest
+export type SDMXTheme = {
+    palette?: string[], // series colours in order
+    fontFamily?: {
+        display?: string, // titles and subtitles
+        data?: string, // axes, labels, legends, tooltips
+    },
+    numberFormat?: {
+        locale?: string, // overrides the component language for number formatting
+    },
+}
 
 // per-visual render state reported through onVisualRender/onRenderComplete;
 // `stats` lets a consumer judge substantive quality ("rendered, but one
@@ -27,6 +42,21 @@ export type SDMXVisualProps = {
     onVisualRender?: (status: VisualRenderStatus) => void, // loading, then rendered | empty | error
     fetcher?: SDMXFetcher, // every data request goes through it (wrapped in the transport: dedup, cache, retry)
     onDataFetch?: (telemetry: FetchTelemetry) => void, // once per settled data request
+    renderLoading?: (visualId: string) => ReactNode, // replaces the built-in loading state
+    renderEmpty?: (visualId: string) => ReactNode, // replaces the error state when the query returned no observations (ERR_EMPTY)
+    renderError?: (error: SDMXRenderError) => ReactNode, // replaces the built-in error state for every other failure
+    onUserInteraction?: (interaction: VisualInteraction) => void, // clicks on chart points, series, and legend items
+}
+
+// user interaction on a rendered visual; `concepts` maps dimension id to
+// code at the interaction point, enough to reconstruct the SDMX query for
+// the clicked slice without any engine knowledge on the consumer side
+export type VisualInteraction = {
+    visualId: string,
+    kind: "point-click" | "series-click" | "legend-click",
+    concepts: Record<string, string>,
+    value?: number, // point clicks: the observation value
+    timePeriod?: string, // point clicks: the observation's TIME_PERIOD, when it has one
 }
 
 export type SDMXTextConfig = {
@@ -118,7 +148,18 @@ export type SDMXMapConfig = {
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     extraOptions?: any // extra options for the visualization
+    // background tiles: "satellite" (default, ArcGIS World Imagery), "none",
+    // or an XYZ tile URL template ({z}, {x}, {y}); tiles are requested with
+    // CORS so the map can be exported
+    basemap?: "satellite" | "none" | (string & {}),
 } & SDMXVisualConfig
+
+// the OpenLayers map handed to a map visual's callback, with an export of
+// its current view as a PNG data URL (data and basemap layers; the HTML
+// legend and tooltip are not drawn)
+export type SDMXMapInstance = OLMap & {
+    toImage: () => Promise<string>,
+}
 
 
 export type SDMXDashboardRow = {
