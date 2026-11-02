@@ -100,6 +100,36 @@ Consumers that need to know when a dashboard is ready (live previews, PDF export
 
 Each `VisualRenderStatus` carries the `visualId`, a `status` of `loading`, `rendered`, `empty`, or `error`, the `SDMXRenderError` when failed (`empty` carries `ERR_EMPTY`), and on success a `stats` block (`observationCount`, `seriesCount`, `timePeriodRange`) that lets a consumer judge whether a technically successful render is substantively thin. `onRenderComplete` fires exactly once per config and language, after the last visual settles, including the case where every visual fails and the case of a dashboard without data visuals (`[]`). The standalone `SDMXChart`, `SDMXTable`, `SDMXValue`, and `SDMXMap` accept `onVisualRender` as well. Both callbacks are optional, and inline callbacks never re-trigger data fetching.
 
+### Custom loading, empty, and error states
+
+The built-in loading, empty, and error presentations can be replaced per state with render slots, on the dashboard and on the standalone components:
+
+```typescript
+<SDMXDashboard
+  config={config}
+  renderLoading={(visualId) => <BrandedSpinner />}
+  renderEmpty={(visualId) => <BrandedNoDataCard />}
+  renderError={(e: SDMXRenderError) => <BrandedErrorCard code={e.code} message={e.message} />}
+/>
+```
+
+Defaults reproduce the built-in behaviour. `renderEmpty` applies when a query returns zero observations (`ERR_EMPTY`); other failures, and `ERR_EMPTY` when no `renderEmpty` is given, go to `renderError`. The map has no loading presentation of its own and shows `renderLoading` only when given.
+
+### Interaction callback
+
+Clicks on chart elements are exposed through `onUserInteraction`, on the dashboard and on `SDMXChart`:
+
+```typescript
+<SDMXDashboard
+  config={config}
+  onUserInteraction={(e: VisualInteraction) => void}
+  // { visualId, kind: "point-click" | "series-click" | "legend-click",
+  //   concepts: { REF_AREA: "WS", INDICATOR: "POP", ... }, value?, timePeriod? }
+/>
+```
+
+A click on a data point gives `point-click` with the observation's full coordinate, its value and its time period; a click on the line of a line series gives `series-click`, and toggling a legend item `legend-click`, both with the coordinate the series shares (the legend dimension). The `concepts` map gives dimension id to code, enough to reconstruct the SDMX query for the clicked slice without engine knowledge on the consumer side. The callback is optional and adds no behaviour when absent.
+
 ### Custom data transport
 
 All components accept an optional `fetcher` prop with the signature of the global `fetch` (`(url, init?) => Promise<Response>`, exported as `SDMXFetcher`). When provided, every request made by the library (the dashboard configuration and all SDMX data queries) goes through it, so the integrating application can add authentication headers, route requests through a proxy, or apply caching and retries without touching the global `fetch`. When absent, the global `fetch` is used.
@@ -131,6 +161,18 @@ Operators can observe endpoint behaviour through the `onDataFetch` callback, ava
 ```
 
 It fires once per settled request, including deduplicated cache hits (`fromCache: true`), with no double counting of the underlying network exchange.
+
+### Axis titles, download, and dashboard rows
+
+`xAxisTitle` and `yAxisTitle` (`SDMXTextConfig`, a string or a per-language map, with the same text expressions as `title`) name the axis of `xAxisConcept` and the value axis. For a horizontal `bar` chart, whose category axis is vertical, they are swapped accordingly. Left unset, the axes stay unnamed; `extraOptions.xAxis.name`/`yAxis.name` still override.
+
+```javascript
+config={{ ..., xAxisTitle: { text: 'Year' }, yAxisTitle: { text: { en: 'Population', fr: 'Population' } } }}
+```
+
+`download: false` hides the chart's save-as-image button; it is shown otherwise.
+
+Dashboard rows list their visuals under `columns` (type `SDMXDashboardRow`). The earlier misspelling `colums` is still accepted as a deprecated alias for this major version; migrate to `columns`.
 
 ### Theming and native ECharts options
 
@@ -206,15 +248,41 @@ rendered only when `config.legend` is set, positioned by `legend.location`
 available cell size, including legend and label space, so they stay inside the
 chart; provide `extraOptions.series.radius` to size the pie yourself.
 
+### Global theming
+
+A `theme` prop applies institutional branding once, at the dashboard level (and is accepted by the standalone components), instead of per visual or through engine class names:
+
+```typescript
+const spcTheme: SDMXTheme = {
+  palette: ['#0a4595', '#e63946', '#2a9d8f'], // series colours in order
+  fontFamily: { display: 'Georgia, serif', data: 'Inter, sans-serif' },
+  numberFormat: { locale: 'en-NZ' }
+};
+
+<SDMXDashboard config={config} theme={spcTheme} />
+```
+
+The theme sits under everything a chart sets itself: a visual's `colorPalette`, the title config and `extraOptions` win, and the ECharts theme in force (the dark theme under `data-bs-theme="dark"`, or the one named by `SDMXChart`'s string `theme`) supplies anything the theme leaves unset. `fontFamily.display` applies to titles and subtitles, `fontFamily.data` to axes, labels, legends and tooltips. `numberFormat.locale` overrides the component language for number formatting (tooltips, data labels, table cells, values) while translated text stays on the component language. `SDMXChart` still accepts `theme` as the name of a registered ECharts theme.
+
 ### Accessibility, export, and registered components
 
 Accessibility (`aria.enabled`) and image export
 (`toolbox.feature.saveAsImage`) are enabled by default. Hovering the download
 button shows a "Save chart as image" tooltip above the icon. Both features can
 be overridden or disabled through `extraOptions`, for example
-`aria: { enabled: false }` or `toolbox: { show: false }`. CSV/data export is
+`aria: { enabled: false }`, or the config's `download: false`. CSV/data export is
 **not** provided because ECharts has no equivalent; `saveAsImage` exports the
 rendered chart image only.
+
+Every chart also renders a visually hidden data table under it, holding the
+same observations (x-axis values as rows, legend values as columns, captioned
+with the chart title), so a screen reader can read the data where the chart's
+aria description falls short. The `table` visual provides the same data as a
+visible table.
+
+Charts render into a `<canvas>` inside a container carrying ECharts'
+`_echarts_instance_` attribute; `getInstanceByDom` from `echarts/core` returns
+the instance (for example to call `getDataURL()` for export).
 
 The library registers the chart types it uses (`LineChart`, `BarChart`,
 `PieChart`, `TreemapChart`, `ScatterChart`) plus `AriaComponent`,
@@ -223,6 +291,18 @@ The library registers the chart types it uses (`LineChart`, `BarChart`,
 through `extraOptions` (for example `dataZoom`), register the corresponding
 component from `echarts/components` in your application before rendering the
 chart.
+
+### Maps
+
+`SDMXMap` draws on a background chosen with `basemap`: `"satellite"` (the default, ArcGIS World Imagery), `"none"`, or an XYZ tile URL template such as `"https://tile.openstreetmap.org/{z}/{x}/{y}.png"`. Tiles are requested with CORS (`crossOrigin: "anonymous"`), so the map canvas stays readable for export; a tile server that sends no CORS headers will not show its tiles.
+
+Areas are coloured on `colorScheme` by `(value - min) / (max - min)` over the joined observations; an area whose value is 0 is filled, only areas without a value stay transparent. A map feature is joined to its observation by code (the feature's `geojsonKey` property against the codes of the geo dimension, ISO alpha-3 keys converted to alpha-2), then by label.
+
+The `callback` receives the OpenLayers map as an `SDMXMapInstance`, with `toImage(): Promise<string>`, a PNG data URL of the data and basemap layers once rendering completes (the HTML legend and tooltip are not drawn):
+
+```typescript
+<SDMXMap config={mapConfig} language="en" callback={async (map) => { const png = await map.toImage(); }} />
+```
 
 ### Sorting data by value
 
