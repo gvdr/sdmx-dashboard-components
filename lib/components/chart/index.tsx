@@ -461,7 +461,7 @@ const Chart = ({ config, language, placeholder, callback, theme, onVisualRender,
       const currentConfig = configRef.current;
       if (!hasExplicitTitleLayout(currentConfig)) applyTitleWidth(child, containerRef.current?.clientWidth ?? 0);
       const mergedChild = mergeExtraOptions(child, currentConfig.extraOptions);
-      applyYAxisTitleLayout(mergedChild, currentConfig.extraOptions);
+      applyYAxisTitleLayout(mergedChild);
       applyBarLabelLayout(mergedChild);
       applyCategoryLabelLayout(mergedChild, containerRef.current?.clientWidth ?? 0, currentConfig.extraOptions);
       // Child options are built without the shared chrome; carry it over so drilldowns keep
@@ -545,7 +545,7 @@ const Chart = ({ config, language, placeholder, callback, theme, onVisualRender,
 
       if (!hasExplicitTitleLayout(config)) applyTitleWidth(built.option, container.clientWidth);
       const merged = mergeExtraOptions(built.option, config.extraOptions);
-      applyYAxisTitleLayout(merged, config.extraOptions);
+      applyYAxisTitleLayout(merged);
       applyBarLabelLayout(merged);
       applyCategoryLabelLayout(merged, container.clientWidth, config.extraOptions);
       if (config.type === 'pie') {
