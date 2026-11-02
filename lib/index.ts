@@ -16,6 +16,7 @@ import {
   type SDMXColorPalette,
   type SDMXDashboardConfig,
   type VisualRenderStatus,
+  type VisualInteraction,
   type SDMXFetcher,
 } from "./components/types";
 import { SDMXRenderError, type SDMXRenderErrorCode } from "./errors";
@@ -30,6 +31,7 @@ export {
   SDMXRenderError,
   SDMXRenderErrorCode,
   VisualRenderStatus,
+  VisualInteraction,
   SDMXFetcher,
   FetchTelemetry,
   SDMXVisualConfig,
