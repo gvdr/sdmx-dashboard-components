@@ -8,6 +8,8 @@ import Chart from './index';
 import { echarts } from './register';
 import { platformApi, setPlatformAPI } from 'zrender/lib/core/platform';
 import { CARTESIAN_GRID_INSETS, GRID_CONTAINS_AXIS_TEXT, applyYAxisTitleLayout } from '../../utils/chartHelpers';
+import type { ParsedDataset } from '../../utils/chartHelpers';
+import { buildChartOptionFromDatasets } from './options';
 import type { SDMXChartConfig } from '../types';
 
 afterEach(() => {
@@ -138,6 +140,20 @@ const largeValueResponse = () => {
     return response;
 };
 
+// the canvas mock measures every font alike; size text by its font, as a
+// browser does, so names follow their font size and labels have real widths.
+// zrender keeps one measuring context across tests, so swap its measurer
+const measureTextByFontSize = () => {
+    const originalMeasure = platformApi.measureText;
+    setPlatformAPI({
+        measureText: (text: string, font?: string) => {
+            const size = Number(/(\d+(?:\.\d+)?)px/.exec(font ?? '')?.[1] ?? 12);
+            return { width: text.length * size * 0.6 };
+        },
+    });
+    onTestFinished(() => setPlatformAPI({ measureText: originalMeasure }));
+};
+
 describe('axis names inside the canvas', () => {
     const TITLE = 'Rate (% per annum)';
 
@@ -165,17 +181,7 @@ describe('axis names inside the canvas', () => {
     });
 
     it('grows the left inset with the name gap and the name font size', () => {
-        // the canvas mock measures every font alike; size text by its font
-        // so the name's line height follows nameTextStyle.fontSize. zrender
-        // keeps one measuring context across tests, so swap its measurer
-        const originalMeasure = platformApi.measureText;
-        setPlatformAPI({
-            measureText: (text: string, font?: string) => {
-                const size = Number(/(\d+(?:\.\d+)?)px/.exec(font ?? '')?.[1] ?? 12);
-                return { width: text.length * size * 0.6 };
-            },
-        });
-        onTestFinished(() => setPlatformAPI({ measureText: originalMeasure }));
+        measureTextByFontSize();
         const draw = (yAxis: Record<string, unknown>) => {
             const container = document.createElement('div');
             const chart = echarts.init(container, undefined, { width: 600, height: 400 });
@@ -198,6 +204,61 @@ describe('axis names inside the canvas', () => {
         expect(wideGap.plotLeft).toBeGreaterThan(base.plotLeft);
         expect(bigFont.plotLeft).toBeGreaterThan(wideGap.plotLeft);
         [base, wideGap, bigFont].forEach(({ nameLeft }) => expect(nameLeft).toBeGreaterThanOrEqual(0));
+    });
+});
+
+describe('time axis labels', () => {
+    const daily = (freq: string, from: string, days: number): ParsedDataset => {
+        const start = Date.parse(`${from}T00:00:00Z`);
+        const periods = Array.from({ length: days }, (_, i) => new Date(start + i * 86400000).toISOString().slice(0, 10))
+            .filter((period) => freq !== 'B' || ![0, 6].includes(new Date(`${period}T00:00:00Z`).getUTCDay()));
+        return {
+            datasetIndex: 0,
+            dimensions: [
+                { id: 'FREQ', name: 'Frequency', values: [{ id: freq, name: freq }] },
+                { id: 'SERIES', name: 'Series', values: [{ id: 'S', name: 'Rate' }] },
+                { id: 'TIME_PERIOD', name: 'Time', values: periods.map((p) => ({ id: p, name: p })) },
+            ],
+            data: periods.map((period, index) => ({ FREQ: freq, SERIES: 'Rate', TIME_PERIOD: period, value: 1 + (index % 7) / 10 })),
+        };
+    };
+    const monthly = (): ParsedDataset => {
+        const periods = Array.from({ length: 14 }, (_, i) => `${2024 + Math.floor((i + 10) / 12)}-${String(((i + 10) % 12) + 1).padStart(2, '0')}`);
+        return {
+            datasetIndex: 0,
+            dimensions: [
+                { id: 'FREQ', name: 'Frequency', values: [{ id: 'M', name: 'Monthly' }] },
+                { id: 'SERIES', name: 'Series', values: [{ id: 'S', name: 'Rate' }] },
+                { id: 'TIME_PERIOD', name: 'Time', values: periods.map((p) => ({ id: p, name: p })) },
+            ],
+            data: periods.map((period) => ({ FREQ: 'M', SERIES: 'Rate', TIME_PERIOD: period, value: 2 })),
+        };
+    };
+
+    // x positions of the x axis labels ECharts draws, left to right
+    const drawnLabels = (dataset: ParsedDataset, width: number) => {
+        const config: SDMXChartConfig = { id: 'time', type: 'line', xAxisConcept: 'TIME_PERIOD', legend: { concept: 'SERIES' }, data: 'x' };
+        const option = buildChartOptionFromDatasets(config, 'en', [dataset]).option;
+        const chart = echarts.init(document.createElement('div'), undefined, { width, height: 300 });
+        chart.setOption({ ...option, animation: false });
+        const zr = chart.getZr() as unknown as { storage: { getDisplayList: (update: boolean) => TextElement[] } };
+        const labels = zr.storage.getDisplayList(true)
+            .filter((el) => typeof el.style?.text === 'string' && /^(\d{4}-\d{2}-\d{2}|[A-Z][a-z]{2} \d{4})$/.test(el.style.text))
+            .map((el) => ({ text: String(el.style?.text), ...textBox(chart, String(el.style?.text)) }))
+            .sort((a, b) => a.left - b.left);
+        chart.dispose();
+        return labels;
+    };
+
+    it.each([
+        ['daily', () => daily('D', '2026-06-10', 140), 700],
+        ['business-day', () => daily('B', '2026-06-10', 140), 700],
+        ['monthly in a narrow column', monthly, 300],
+    ])('draws %s labels without overlap', (_, dataset, width) => {
+        measureTextByFontSize();
+        const labels = drawnLabels(dataset(), width);
+        expect(labels.length).toBeGreaterThan(1);
+        labels.slice(1).forEach((label, i) => expect(label.left).toBeGreaterThanOrEqual(labels[i].right));
     });
 });
 
