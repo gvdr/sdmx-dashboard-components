@@ -330,6 +330,10 @@ const buildA11yTable = (
   }
 };
 
+// a failed chart shows its message in a compact panel, not in the chart's
+// full height: room for a two- or three-line message plus padding
+const ERROR_PANEL_MIN_HEIGHT = 120;
+
 const Chart = ({ config, language, placeholder, callback, theme, onVisualRender, fetcher, onDataFetch, renderLoading, renderEmpty, renderError, onUserInteraction, className, style, ...props }: ChartProps) => {
   const themeName = typeof theme === 'string' ? theme : undefined;
   const sdmxTheme = typeof theme === 'object' ? theme : undefined;
@@ -620,6 +624,7 @@ const Chart = ({ config, language, placeholder, callback, theme, onVisualRender,
 
   const isDarkTheme = activeTheme === 'dark';
   const hasHeader = !isLoading && !error && canGoBack;
+  const failed = !isLoading && error !== null;
   const errorSlot = error ? failureSlot(error, config.id, { renderEmpty, renderError }) : undefined;
 
   const chartNode: React.ReactNode = (
@@ -654,7 +659,9 @@ const Chart = ({ config, language, placeholder, callback, theme, onVisualRender,
           {drilldownLabel && <span className="fw-semibold">{drilldownLabel}</span>}
         </div>
       )}
-      <div style={{ position: 'relative' }}>
+      {/* a failed chart collapses its box (kept at its size, so the
+          instance needs no resize) and the panel sizes to its message */}
+      <div style={failed ? { position: 'relative', height: 0, overflow: 'hidden' } : { position: 'relative' }}>
         {config.dataLink ? (
           <a href={config.dataLink} target="_blank" rel="noreferrer">
             {chartNode}
@@ -671,22 +678,18 @@ const Chart = ({ config, language, placeholder, callback, theme, onVisualRender,
             )}
           </div>
         )}
-        {!isLoading && error && errorSlot !== undefined && (
-          <div className="position-absolute top-0 start-0 w-100 h-100">
-            {errorSlot}
-          </div>
-        )}
-        {!isLoading && error && errorSlot === undefined && (
-          <div
-            className="sdmx-render-error position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center text-danger"
-            style={{ padding: '1rem', textAlign: 'center' }}
-            role="alert"
-            data-error-code={error.code}
-          >
-            {error.message}
-          </div>
-        )}
       </div>
+      {failed && errorSlot !== undefined && errorSlot}
+      {failed && error && errorSlot === undefined && (
+        <div
+          className="sdmx-render-error d-flex align-items-center justify-content-center text-danger"
+          style={{ padding: '1rem', textAlign: 'center', minHeight: ERROR_PANEL_MIN_HEIGHT }}
+          role="alert"
+          data-error-code={error.code}
+        >
+          {error.message}
+        </div>
+      )}
       {!isLoading && !error && a11yTable && <HiddenDataTable model={a11yTable.model} caption={a11yTable.caption} />}
     </>
   );
