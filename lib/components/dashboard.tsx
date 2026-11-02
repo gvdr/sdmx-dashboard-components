@@ -18,6 +18,25 @@ type DashboardProps = SDMXVisualProps & {
     onRenderComplete?: (all: VisualRenderStatus[]) => void, // once per config and language, after every visual settled
 }
 
+// accept the deprecated `colums` misspelling as an alias for `columns` and
+// apply the layout defaults, so every downstream read uses `columns`
+const normalizeConfig = (config: SDMXDashboardConfig): SDMXDashboardConfig => {
+    if (!config.colCount) {
+        config.colCount = 3;
+    }
+    (config.rows || []).forEach((row) => {
+        if (!row.columns) {
+            row.columns = row.colums ?? [];
+        }
+        row.columns.forEach((cell) => {
+            if (!cell.colSize) {
+                cell.colSize = 1;
+            }
+        })
+    })
+    return config;
+}
+
 // ids of the visuals that report a render status, in layout order
 const reportingVisualIds = (pageData: SDMXDashboardConfig): string[] =>
     pageData.rows
@@ -100,19 +119,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
     useEffect(() => {
       if (url) {
         (fetcher || fetch)(url).then(response => response.json()).then((data) => {
-            // set default values
-            if (!data.colCount) {
-                data.colCount = 3;
-            }
-            data.rows.forEach((row: any) => {
-              row.columns.forEach((cell: any) => {
-                if (!cell.colSize) {
-                  cell.colSize = 1;
-                }
-              })
-            })
-            setPageData(data)
-
+            setPageData(normalizeConfig(data))
         }).catch((e) => {
             console.log(e)
         })
@@ -125,17 +132,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
     const configKey = config ? JSON.stringify(config) : undefined
     useEffect(() => {
       if(config) {
-        if (!config.colCount) {
-            config.colCount = 3;
-        }
-        config.rows.forEach((row: any) => {
-          row.columns.forEach((cell: any) => {
-            if (!cell.colSize) {
-              cell.colSize = 1;
-            }
-          })
-        })
-        setPageData(config)
+        setPageData(normalizeConfig(config))
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [configKey])
