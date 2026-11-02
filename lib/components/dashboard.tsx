@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React from 'react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 
 import Cell from './cell';
 import Text from './text';
@@ -9,6 +9,7 @@ import '../global.module.css';
 import { SDMXDashboardConfig, SDMXVisualProps, VisualRenderStatus } from './types';
 import { REPORTING_VISUAL_TYPES } from '../utils/renderStats';
 import { useLatest } from '../utils/useLatest';
+import { createTransport } from '../utils/transport';
 
 type DashboardProps = SDMXVisualProps & {
     url?: string,
@@ -65,12 +66,22 @@ const settleTracking = (tracking: RenderTracking, onRenderComplete?: (all: Visua
     }
 }
 
-const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", onRenderComplete, ...visualProps }: DashboardProps) => {
+const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", onRenderComplete, fetcher, onDataFetch, ...visualProps }: DashboardProps) => {
 
     const [pageData, setPageData] = useState<SDMXDashboardConfig>();
 
     const onVisualRenderRef = useLatest(visualProps.onVisualRender);
     const onRenderCompleteRef = useLatest(onRenderComplete);
+    const onDataFetchRef = useLatest(onDataFetch);
+
+    // one transport per rendered config and language: visuals of the same
+    // dashboard share identical in-flight requests and the response cache,
+    // and a config or language change invalidates both
+    const transport = useMemo(
+        () => createTransport(fetcher, (telemetry) => onDataFetchRef.current?.(telemetry)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [pageData, lang, fetcher]
+    );
 
     // created lazily: child effects, which report first, run before any
     // dashboard effect
@@ -88,7 +99,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
 
     useEffect(() => {
       if (url) {
-        fetch(url).then(response => response.json()).then((data) => {
+        (fetcher || fetch)(url).then(response => response.json()).then((data) => {
             // set default values
             if (!data.colCount) {
                 data.colCount = 3;
@@ -106,8 +117,12 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
             console.log(e)
         })
       }
-    }, [url])
+    }, [url, fetcher])
 
+    // key on config content, not object identity: a consumer passing an
+    // inline config={{...}} literal (new object each render) would otherwise
+    // setPageData on every render, churning the transport and re-fetching
+    const configKey = config ? JSON.stringify(config) : undefined
     useEffect(() => {
       if(config) {
         if (!config.colCount) {
@@ -122,7 +137,8 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
         })
         setPageData(config)
       }
-    }, [config])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [configKey])
 
     // after the children's effects of this commit have reported: settles a
     // config without reporting visuals, or one whose visuals did not change
@@ -154,6 +170,7 @@ const Dashboard = ({ url, config, lang = document.documentElement.lang || "en", 
                             language={lang}
                             config={cell}
                             onVisualRender={handleVisualRender}
+                            fetcher={transport}
                           />
                         ))
                       }

@@ -18,6 +18,7 @@ import { SDMXChartConfig, SDMXVisualProps } from '../types';
 import { SDMXRenderError, engineError, toSDMXRenderError } from '../../errors';
 import { computeRenderStats, failedRenderStatus } from '../../utils/renderStats';
 import { useLatest } from '../../utils/useLatest';
+import { useTransport } from '../../utils/transport';
 import { merge } from 'ts-deepmerge';
 import styles from '../../global.module.css';
 
@@ -205,7 +206,7 @@ const initChart = (container: HTMLDivElement, themeName?: string): EChartsType =
   return chart;
 };
 
-const Chart = ({ config, language, placeholder, callback, theme, onVisualRender, className, style, ...props }: ChartProps) => {
+const Chart = ({ config, language, placeholder, callback, theme, onVisualRender, fetcher, onDataFetch, className, style, ...props }: ChartProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<SDMXRenderError | null>(null);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -228,6 +229,11 @@ const Chart = ({ config, language, placeholder, callback, theme, onVisualRender,
 
   const dataKey = JSON.stringify(config.data);
   const loadKey = `${dataKey}|${language}|${config.xAxisConcept ?? ''}`;
+  // the render effect is keyed on the config's content, not its identity:
+  // an inline config literal is a new object on every parent render, and a
+  // state-updating onVisualRender would otherwise re-render it in a loop
+  const configKey = JSON.stringify(config);
+  const transport = useTransport(fetcher, onDataFetch, loadKey);
 
   useEffect(() => {
     callbackRef.current = callback;
@@ -258,7 +264,7 @@ const Chart = ({ config, language, placeholder, callback, theme, onVisualRender,
     const currentConfig = configRef.current;
     setError(null);
     onVisualRenderRef.current?.({ visualId: currentConfig.id, status: 'loading' });
-    loadDatasets(currentConfig, language)
+    loadDatasets(currentConfig, language, transport)
       .then((datasets) => {
         if (cancelled) return;
         setLoadedData({ key: loadKey, datasets });
@@ -270,7 +276,7 @@ const Chart = ({ config, language, placeholder, callback, theme, onVisualRender,
     return () => {
       cancelled = true;
     };
-  }, [loadKey, language, fail, onVisualRenderRef]);
+  }, [loadKey, language, transport, fail, onVisualRenderRef]);
 
   useEffect(() => {
     const resolveTheme = () => {
@@ -429,7 +435,9 @@ const Chart = ({ config, language, placeholder, callback, theme, onVisualRender,
     return () => {
       resizeObserver.disconnect();
     };
-  }, [config, language, loadKey, loadedData, attachDrilldownHandler, fail, onVisualRenderRef]);
+    // config is read at its configKey; its identity alone must not re-render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configKey, language, loadKey, loadedData, attachDrilldownHandler, fail, onVisualRenderRef]);
 
   useEffect(() => () => {
     chartRef.current?.dispose();
