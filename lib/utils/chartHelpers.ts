@@ -863,8 +863,10 @@ export const collectColumnLike = (context: ChartContext): ColumnLikeCollection =
       : activeDimensions!.find((d: any) => d.id !== xAxisConcept)
         ?? dimensions.find((d: any) => d.id !== xAxisConcept);
     if (!legendDimension) {
-      throw new Error(
-        `Chart type=${config.type} with xAxis=${xAxisConcept} needs a dimension besides ${xAxisConcept} to group its series, and the dataflow has none. Fix: set xAxisConcept to another dimension of the dataflow.`
+      throw new SDMXRenderError(
+        'ERR_NO_SERIES_DIMENSION',
+        `Chart type=${config.type} with xAxis=${xAxisConcept} needs a dimension besides ${xAxisConcept} to group its series, and the dataflow has none. Fix: set xAxisConcept to another dimension of the dataflow.`,
+        { detail: { chartType: config.type, xAxisConcept, varyingDimensions: [] } }
       );
     }
     const xAxisDimension = activeDimensions!.find((d: any) => d.id === xAxisConcept);
