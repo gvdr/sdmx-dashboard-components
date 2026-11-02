@@ -8,7 +8,8 @@ import { fetchDataExprOperand, parseDataExpr } from "../../utils/parseDataExpr";
 import { dataRequestOptions } from "../../utils/requestHeaders";
 import { InfoCircle } from "react-bootstrap-icons";
 import { Button } from "react-bootstrap";
-import { SDMXVisualConfig, SDMXVisualProps } from "../types";
+import { SDMXTheme, SDMXVisualConfig, SDMXVisualProps } from "../types";
+import { resolveNumberLocale } from "../../utils/theme";
 import { SDMXRenderError, emptyDataError, toSDMXRenderError } from "../../errors";
 import { computeRenderStats, failedRenderStatus } from "../../utils/renderStats";
 import { useLatest } from "../../utils/useLatest";
@@ -23,11 +24,13 @@ interface ValueProps extends React.HTMLAttributes<HTMLDivElement>, SDMXVisualPro
     placeholder?: React.JSX.Element;
     callback?: (value: React.JSX.Element) => void;
     language: string;
+    theme?: SDMXTheme; // only numberFormat applies to a value
 }
 
 // onUserInteraction is taken off the DOM props: only charts report interactions
-const Value = ({ config, placeholder, callback, language, onVisualRender, fetcher, onDataFetch, renderLoading, renderEmpty, renderError: renderErrorSlot, onUserInteraction: _onUserInteraction, ...props }: ValueProps) => {
+const Value = ({ config, placeholder, callback, language, theme, onVisualRender, fetcher, onDataFetch, renderLoading, renderEmpty, renderError: renderErrorSlot, onUserInteraction: _onUserInteraction, ...props }: ValueProps) => {
 
+    const numberLocale = resolveNumberLocale(theme, language);
     const [valueElement, setValueElement] = useState(<span>Loading...</span>)
     const [popupStr, setPopupStr] = useState<string>("")
     const [titleText, setTitleText] = useState<string>(config.title?'Loading...':'')
@@ -130,11 +133,11 @@ const Value = ({ config, placeholder, callback, language, onVisualRender, fetche
                 valueUnder = true;
             }
         }
-        const valueSize = config.adaptiveTextSize ? calculateFontSize(valueStr.toLocaleString(language)) : '4em';
+        const valueSize = config.adaptiveTextSize ? calculateFontSize(valueStr.toLocaleString(numberLocale)) : '4em';
         const unitSize = ( config.adaptiveTextSize && valueUnder ) ? calculateFontSize(valueLabel) : '4em';
         return (
             <>
-            <span className="lh-1" style={{fontSize: valueSize, cursor: "default"}}>{valueStr.toLocaleString(language)}</span>
+            <span className="lh-1" style={{fontSize: valueSize, cursor: "default"}}>{valueStr.toLocaleString(numberLocale)}</span>
             {
                 valueUnder && <span style={{fontSize: unitSize, cursor: "default"}}>{valueLabel}</span>
             }
@@ -258,7 +261,7 @@ const Value = ({ config, placeholder, callback, language, onVisualRender, fetche
         };
         // config is read at its configKey; its identity alone must not refetch
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [configKey, language, transport]);
+    }, [configKey, language, numberLocale, transport]);
 
     const valueNode: React.ReactNode =
         <div className="value-node d-flex flex-column h-100">

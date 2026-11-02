@@ -28,7 +28,7 @@ const TIME_LABEL_FORMATS: Record<string, string> = {
   B: DAY_FORMAT,
 };
 
-export const buildLine: ChartBuilder = ({ config, language, datasets }) => {
+export const buildLine: ChartBuilder = ({ config, numberLocale, datasets }) => {
   const series: any[] = [];
   let xAxis: any = { type: 'category', data: [] };
   let timeAxisFormat: string | undefined;
@@ -91,7 +91,7 @@ export const buildLine: ChartBuilder = ({ config, language, datasets }) => {
       });
   });
 
-  const labeledSeries = applySeriesLabels(series, config, language, 'line');
+  const labeledSeries = applySeriesLabels(series, config, numberLocale, 'line');
   const axes = finalizeCartesianAxes(xAxis, { type: 'value' });
 
   return {
@@ -99,7 +99,7 @@ export const buildLine: ChartBuilder = ({ config, language, datasets }) => {
     xAxis: axes.xAxis,
     yAxis: axes.yAxis,
     grid: buildCartesianGrid(config, labeledSeries),
-    tooltip: buildCartesianTooltip(config, language, timeAxisFormat),
+    tooltip: buildCartesianTooltip(config, numberLocale, timeAxisFormat),
     legend: buildLegend(config),
   };
 };
