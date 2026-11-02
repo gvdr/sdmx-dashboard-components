@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import Chart from './index';
+import type { EChartsType } from 'echarts/core';
 import type { SDMXChartConfig, VisualRenderStatus } from '../types';
 
 afterEach(() => {
@@ -211,5 +212,65 @@ describe('chart error surfacing', () => {
         const chartBox = container.querySelector<HTMLElement>('div[style*="height: 400px"]');
         expect(chartBox).not.toBeNull();
         expect(chartBox?.parentElement?.style.height).toBe('');
+    });
+});
+
+describe('treemap without legend.concept', () => {
+    // tiles per country; INDICATOR and TIME_PERIOD hold a single value
+    const countriesResponse = (withOtherDimensions = true) => ({
+        data: {
+            structures: [
+                {
+                    name: 'Test flow',
+                    names: { en: 'Test flow' },
+                    dimensions: {
+                        dataSet: [],
+                        series: [],
+                        observation: [
+                            { id: 'GEO_PICT', name: 'Country', keyPosition: 0, values: [{ id: 'FJ', name: 'Fiji' }, { id: 'WS', name: 'Samoa' }] },
+                            ...(withOtherDimensions ? [
+                                { id: 'INDICATOR', name: 'Indicator', keyPosition: 1, values: [{ id: 'POP', name: 'Population' }] },
+                                { id: 'TIME_PERIOD', name: 'Time', keyPosition: 2, values: [{ id: '2021', name: '2021' }] },
+                            ] : []),
+                        ]
+                    },
+                    attributes: { dataSet: [], dimensionGroup: [], series: [], observation: [] }
+                }
+            ],
+            dataSets: [{
+                action: 'Information',
+                observations: withOtherDimensions ? { '0:0:0': [900000], '1:0:0': [200000] } : { '0': [900000], '1': [200000] }
+            }]
+        }
+    });
+    const treemapConfig = (): SDMXChartConfig => ({
+        id: 'test-treemap',
+        type: 'treemap',
+        xAxisConcept: 'GEO_PICT',
+        data: 'https://example.org/rest/data/X,Y,1.0/all?dimensionAtObservation=AllDimensions'
+    });
+
+    it('draws one tile per category from the single-valued dimension', async () => {
+        stubFetchWith(countriesResponse());
+        let chart: EChartsType | undefined;
+        const statuses: VisualRenderStatus[] = [];
+
+        render(<Chart config={treemapConfig()} language="en" callback={(c) => { chart = c; }} onVisualRender={(s) => statuses.push(s)} />);
+
+        await waitFor(() => expect(chart).toBeDefined());
+        expect(screen.queryByRole('alert')).toBeNull();
+        const series = (chart!.getOption() as unknown as { series: Array<{ data: Array<{ name: string, value: number }> }> }).series;
+        expect(series[0].data.map(({ name, value }) => [name, value])).toEqual([['Fiji', 900000], ['Samoa', 200000]]);
+        expect(statuses.at(-1)).toMatchObject({ status: 'rendered', stats: { seriesCount: 1 } });
+    });
+
+    it('renders ERR_NO_SERIES_DIMENSION when the dataflow has no other dimension', async () => {
+        stubFetchWith(countriesResponse(false));
+
+        render(<Chart config={treemapConfig()} language="en" />);
+
+        const alert = await screen.findByRole('alert');
+        expect(alert.getAttribute('data-error-code')).toBe('ERR_NO_SERIES_DIMENSION');
+        expect(alert.textContent).toContain('needs a dimension besides GEO_PICT to group its series');
     });
 });
