@@ -2,6 +2,7 @@ import type { EChartsOption } from 'echarts';
 import type { ReactNode } from 'react';
 import type { SDMXRenderError } from '../errors';
 import type { FetchTelemetry } from '../utils/transport';
+import type OLMap from 'ol/Map';
 
 // drop-in replacement for the global fetch; lets consumers add
 // authentication, proxying, caching, or retries to every data request
@@ -147,7 +148,18 @@ export type SDMXMapConfig = {
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     extraOptions?: any // extra options for the visualization
+    // background tiles: "satellite" (default, ArcGIS World Imagery), "none",
+    // or an XYZ tile URL template ({z}, {x}, {y}); tiles are requested with
+    // CORS so the map can be exported
+    basemap?: "satellite" | "none" | (string & {}),
 } & SDMXVisualConfig
+
+// the OpenLayers map handed to a map visual's callback, with an export of
+// its current view as a PNG data URL (data and basemap layers; the HTML
+// legend and tooltip are not drawn)
+export type SDMXMapInstance = OLMap & {
+    toImage: () => Promise<string>,
+}
 
 
 export type SDMXDashboardRow = {

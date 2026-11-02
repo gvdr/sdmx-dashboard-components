@@ -17,6 +17,7 @@ import {
   type SDMXDashboardConfig,
   type SDMXDashboardRow,
   type SDMXTheme,
+  type SDMXMapInstance,
   type VisualRenderStatus,
   type VisualInteraction,
   type SDMXFetcher,
@@ -47,6 +48,7 @@ export {
   SDMXDashboardConfig,
   SDMXDashboardRow,
   SDMXTheme,
+  SDMXMapInstance,
 };
 
 export type { EChartsType } from 'echarts/core';
