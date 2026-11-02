@@ -1,15 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { EChartsOption } from 'echarts';
-import type { SDMXChartConfig } from '../types';
+import type { SDMXChartConfig, SDMXFetcher, SDMXTheme } from '../types';
+import { merge } from 'ts-deepmerge';
+import { resolveNumberLocale, themeChartOptions } from '../../utils/theme';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import { SDMXParser } from 'sdmx-json-parser';
 import { parseTextExpr } from '../../utils/parseTextExpr';
 import { fetchDataExprOperand, parseDataExpr } from '../../utils/parseDataExpr';
-import { dataRequestHeaders } from '../../utils/requestHeaders';
+import { dataRequestOptions } from '../../utils/requestHeaders';
+import { SDMXRenderError, emptyDataError } from '../../errors';
 import { parse as parseExpr, EvalAstFactory, Scope } from 'jexpr';
 import type { BuiltChart, ChartBuilder, ChartBuildResult, ChartContext, ChartType, ParsedDataset } from '../../utils/chartHelpers';
 import { buildEchartsTitle } from '../../utils/chartHelpers';
+import { validateSeriesDimensions } from '../../utils/validateChartData';
 import { buildLine } from './line';
 import { buildBar, buildColumn } from './columnLikeChart';
 import { buildLollipop } from './lollipop';
@@ -38,17 +42,18 @@ const resolveText = (text: SDMXChartConfig['title'], dimensions: any[], language
 };
 
 export const loadDatasets = async (
-  dataExpression: SDMXChartConfig['data'],
-  xAxisConcept: SDMXChartConfig['xAxisConcept'],
-  language: string
+  { id, data: dataExpression, xAxisConcept }: Pick<SDMXChartConfig, 'id' | 'data' | 'xAxisConcept'>,
+  language: string,
+  fetcher?: SDMXFetcher
 ): Promise<ParsedDataset[]> => {
   const dataObjs = parseDataExpr(dataExpression);
   const dataPromises = dataObjs.map((dataObj, datasetIndex) => {
     const parser = new SDMXParser();
     return parser
-      .getDatasets(dataObj.dataFlowUrl, { headers: dataRequestHeaders(language) })
+      .getDatasets(dataObj.dataFlowUrl, dataRequestOptions(language, fetcher))
       .then(() => {
         const data = parser.getData();
+        if (data.length === 0) throw emptyDataError(id, dataObj.dataFlowUrl);
         const attributes = parser.getAttributes();
         if (dataObj.alternateLabel) {
           data.forEach((_item: any, index: number, data: any[]) => {
@@ -78,7 +83,7 @@ export const loadDatasets = async (
           };
         } else if (dataObj.operator === 'expr') {
           const scope: Scope = { x0: data.map((item: any) => item.value) };
-          const ops = fetchDataExprOperand(dataObj.exprOperand, data, scope, attributes, language);
+          const ops = fetchDataExprOperand(dataObj.exprOperand, data, scope, attributes, language, fetcher);
           return Promise.all(ops).then(() => {
             const astFactory = new EvalAstFactory();
             const expr = parseExpr(dataObj.expression, astFactory);
@@ -114,6 +119,7 @@ export const loadDatasets = async (
 const createChartContext = (
   config: SDMXChartConfig,
   language: string,
+  numberLocale: string,
   sourceDatasets: ParsedDataset[]
 ): ChartContext => {
   let titleText = '';
@@ -126,22 +132,41 @@ const createChartContext = (
     titleText = datasetTitleText;
     subtitleText = datasetSubtitleText;
 
+    const availableConcepts = dimensions.map((d: any) => d.id);
     if (config.xAxisConcept && config.xAxisConcept !== 'MULTI') {
       if (!dimensions.find((d: any) => d.id === config.xAxisConcept)) {
-        throw new Error(`xAxisConcept ${config.xAxisConcept} not found in dataflow`);
+        throw new SDMXRenderError(
+          'ERR_CONCEPT_NOT_FOUND',
+          `xAxisConcept ${config.xAxisConcept} not found in the dataflow. Available concepts: ${availableConcepts.join(', ')}. Fix: set xAxisConcept to one of the available concepts.`,
+          { detail: { concept: config.xAxisConcept, role: 'xAxisConcept', available: availableConcepts } }
+        );
       }
     }
     const legendConcept = config.legend?.concept;
     if (legendConcept && legendConcept !== 'MULTI') {
       if (!dimensions.find((d: any) => d.id === legendConcept)) {
-        throw new Error(`legendConcept ${legendConcept} not found in dataflow`);
+        throw new SDMXRenderError(
+          'ERR_CONCEPT_NOT_FOUND',
+          `legendConcept ${legendConcept} not found in the dataflow. Available concepts: ${availableConcepts.join(', ')}. Fix: set legend.concept to one of the available concepts.`,
+          { detail: { concept: legendConcept, role: 'legend.concept', available: availableConcepts } }
+        );
       }
     }
+
+    // fail with a descriptive error instead of a blank panel or a misleading
+    // single merged series (see-saw plot)
+    validateSeriesDimensions(
+      config.type,
+      config.xAxisConcept || (config.type === 'line' ? 'TIME_PERIOD' : ''),
+      legendConcept ?? '',
+      dataset.data,
+      dimensions
+    );
 
     return { ...dataset, titleText: datasetTitleText, subtitleText: datasetSubtitleText };
   });
 
-  return { config, language, datasets, titleText, subtitleText };
+  return { config, language, numberLocale, datasets, titleText, subtitleText };
 };
 
 const TOOLBOX_FEATURE_LABELS: Record<string, string> = {
@@ -201,20 +226,24 @@ const assembleOption = (
 export const buildChartOptionFromDatasets = (
   config: SDMXChartConfig,
   language: string,
-  datasets: ParsedDataset[]
+  datasets: ParsedDataset[],
+  theme?: SDMXTheme
 ): BuiltChart => {
   const chartType = config.type;
   if (!chartType) throw new Error('Chart type not defined');
   const builder = builders[chartType as ChartType];
   if (!builder) throw new Error(`Unsupported chart type: ${chartType}`);
 
-  const context = createChartContext(config, language, datasets);
+  const context = createChartContext(config, language, resolveNumberLocale(theme, language), datasets);
   const parts = builder(context);
+  const option = assembleOption(config, context, parts);
 
   return {
-    option: assembleOption(config, context, parts),
+    // the theme sits under everything the chart sets itself
+    option: theme ? merge(themeChartOptions(theme), option) as EChartsOption : option,
     titleText: context.titleText,
     subtitleText: context.subtitleText,
     drilldown: parts.drilldown,
+    seriesCount: parts.seriesCount ?? parts.series.length,
   };
 };

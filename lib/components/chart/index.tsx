@@ -14,17 +14,42 @@ import {
 } from '../../utils/chartHelpers';
 import { ChevronLeft, InfoCircle } from 'react-bootstrap-icons';
 import { Button } from 'react-bootstrap';
-import { SDMXChartConfig } from '../types';
+import { SDMXChartConfig, SDMXTheme, SDMXVisualProps, VisualInteraction } from '../types';
+import { SDMXRenderError, engineError, toSDMXRenderError } from '../../errors';
+import { computeRenderStats, failedRenderStatus } from '../../utils/renderStats';
+import { useLatest } from '../../utils/useLatest';
+import { useTransport } from '../../utils/transport';
+import { failureSlot } from '../../utils/slots';
+import { resolveNumberLocale } from '../../utils/theme';
+import { buildTableModel, type TableModel } from '../table/model';
+import HiddenDataTable from '../hiddenDataTable';
+import {
+  buildInteractionConcepts,
+  buildSeriesConcepts,
+  findInteractionRow,
+  type InteractionDimension,
+} from '../../utils/interaction';
 import { merge } from 'ts-deepmerge';
 import styles from '../../global.module.css';
 
-interface ChartProps extends React.HTMLAttributes<HTMLDivElement> {
+interface ChartProps extends React.HTMLAttributes<HTMLDivElement>, SDMXVisualProps {
   config: SDMXChartConfig;
   language: string;
   placeholder?: React.JSX.Element;
   callback?: (chart: EChartsType) => void;
-  theme?: string;
+  // a registered ECharts theme name (rc.1 behaviour), or an SDMXTheme
+  // merged under the chart's own options; dark mode applies under either
+  theme?: string | SDMXTheme;
 }
+
+// run an engine call; anything it throws is an ERR_ENGINE failure of the visual
+const runEngine = (visualId: string, draw: () => void) => {
+  try {
+    draw();
+  } catch (err) {
+    throw engineError(visualId, err);
+  }
+};
 
 
 const mergeExtraOptions = (option: EChartsOption, extra?: EChartsOption): EChartsOption => {
@@ -227,12 +252,100 @@ const initChart = (container: HTMLDivElement, themeName?: string): EChartsType =
   return chart;
 };
 
-const Chart = ({ config, language, placeholder, callback, theme, className, style, ...props }: ChartProps) => {
+type InteractionSource = {
+  visualId: string;
+  datasets: ParsedDataset[];
+  emit?: (interaction: VisualInteraction) => void;
+};
+
+// report clicks on points, series and legend items as SDMX coordinates; the
+// source is read per event so the handlers outlive config and prop changes
+const attachInteractionHandlers = (chart: EChartsType, source: () => InteractionSource) => {
+  chart.on('click', (params: ECElementEvent) => {
+    const { visualId, datasets, emit } = source();
+    if (!emit || params.componentType !== 'series') return;
+    const dimensions: InteractionDimension[] = datasets.flatMap((dataset) => dataset.dimensions);
+    const seriesName = typeof params.seriesName === 'string' ? params.seriesName : undefined;
+    // a line or area of a line series (triggerEvent) carries no data index
+    if (typeof params.dataIndex !== 'number' || params.data === undefined) {
+      emit({ visualId, kind: 'series-click', concepts: buildSeriesConcepts(seriesName ?? '', dimensions) });
+      return;
+    }
+    // points are numbers, [x, y] pairs, or { value, name, TIME_PERIOD } items
+    const raw = params.value;
+    const [x, value] = Array.isArray(raw) ? [raw[0], raw[1]] : [undefined, raw];
+    const item: unknown = params.data;
+    const itemPeriod = item && typeof item === 'object' && 'TIME_PERIOD' in item && typeof item.TIME_PERIOD === 'string'
+      ? item.TIME_PERIOD
+      : undefined;
+    const row = findInteractionRow(datasets.flatMap((dataset) => dataset.data), dimensions, {
+      seriesName,
+      name: params.name || (typeof x === 'string' ? x : undefined),
+      time: typeof x === 'number' ? x : undefined,
+      value,
+      timePeriod: itemPeriod,
+    });
+    const interaction: VisualInteraction = {
+      visualId,
+      kind: 'point-click',
+      concepts: row ? buildInteractionConcepts(row, dimensions) : buildSeriesConcepts(seriesName ?? '', dimensions),
+    };
+    if (typeof value === 'number') interaction.value = value;
+    const timePeriod = row?.TIME_PERIOD ?? itemPeriod;
+    if (timePeriod !== undefined && timePeriod !== null) interaction.timePeriod = String(timePeriod);
+    emit(interaction);
+  });
+  chart.on('legendselectchanged', (params: unknown) => {
+    const { visualId, datasets, emit } = source();
+    const name = params && typeof params === 'object' && 'name' in params ? params.name : undefined;
+    if (!emit || typeof name !== 'string') return;
+    const dimensions: InteractionDimension[] = datasets.flatMap((dataset) => dataset.dimensions);
+    emit({ visualId, kind: 'legend-click', concepts: buildSeriesConcepts(name, dimensions) });
+  });
+};
+
+// the chart's observations as a table for assistive technology: x-axis
+// values as rows, legend values as columns. Charts whose shape the table
+// pivot cannot read (a pie without a legend dimension, say) get none; the
+// chart itself is unaffected.
+const buildA11yTable = (
+  config: SDMXChartConfig,
+  numberLocale: string,
+  datasets: ParsedDataset[],
+  titleText: string
+): { model: TableModel; caption: string } | null => {
+  try {
+    const tableConfig = {
+      ...config,
+      type: 'table' as const,
+      xAxisConcept: config.xAxisConcept || 'TIME_PERIOD',
+      categoryLabel: config.xAxisConcept || 'TIME_PERIOD',
+      sortByValue: undefined,
+    };
+    const model = buildTableModel(tableConfig, numberLocale, datasets);
+    if (model.rows.length === 0) return null;
+    return { model, caption: titleText || config.id };
+  } catch {
+    return null;
+  }
+};
+
+// a failed chart shows its message in a compact panel, not in the chart's
+// full height: room for a two- or three-line message plus padding
+const ERROR_PANEL_MIN_HEIGHT = 120;
+
+const Chart = ({ config, language, placeholder, callback, theme, onVisualRender, fetcher, onDataFetch, renderLoading, renderEmpty, renderError, onUserInteraction, className, style, ...props }: ChartProps) => {
+  const themeName = typeof theme === 'string' ? theme : undefined;
+  const sdmxTheme = typeof theme === 'object' ? theme : undefined;
+  // keyed on content: an inline theme literal must not rebuild the chart
+  const sdmxThemeKey = JSON.stringify(sdmxTheme ?? null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SDMXRenderError | null>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [drilldownLabel, setDrilldownLabel] = useState('');
-  const [activeTheme, setActiveTheme] = useState<string | undefined>(theme);
+  const [activeTheme, setActiveTheme] = useState<string | undefined>(themeName);
+  // the observations behind the chart, for the visually hidden data table
+  const [a11yTable, setA11yTable] = useState<{ model: TableModel; caption: string } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<EChartsType | null>(null);
@@ -240,8 +353,12 @@ const Chart = ({ config, language, placeholder, callback, theme, className, styl
   const baseOptionRef = useRef<EChartsOption | null>(null);
   const stackRef = useRef<EChartsOption[]>([]);
   const callbackRef = useRef(callback);
-  const activeThemeRef = useRef<string | undefined>(theme);
+  const activeThemeRef = useRef<string | undefined>(themeName);
   const configRef = useRef(config);
+  const onVisualRenderRef = useLatest(onVisualRender);
+  const onUserInteractionRef = useLatest(onUserInteraction);
+  // the datasets drawn, for translating clicked points back to SDMX codes
+  const datasetsRef = useRef<ParsedDataset[]>([]);
   const [loadedData, setLoadedData] = useState<{
     key: string;
     datasets: ParsedDataset[];
@@ -249,6 +366,11 @@ const Chart = ({ config, language, placeholder, callback, theme, className, styl
 
   const dataKey = JSON.stringify(config.data);
   const loadKey = `${dataKey}|${language}|${config.xAxisConcept ?? ''}`;
+  // the render effect is keyed on the config's content, not its identity:
+  // an inline config literal is a new object on every parent render, and a
+  // state-updating onVisualRender would otherwise re-render it in a loop
+  const configKey = JSON.stringify(config);
+  const transport = useTransport(fetcher, onDataFetch, loadKey);
 
   useEffect(() => {
     callbackRef.current = callback;
@@ -258,31 +380,46 @@ const Chart = ({ config, language, placeholder, callback, theme, className, styl
     configRef.current = config;
   });
 
+  // every failure of the visual, from fetch to engine, lands here: shown in
+  // the panel and reported as a typed error. ECharts has no error event and
+  // re-renders on animation frames, so an instance that threw is disposed:
+  // left alive it would throw again outside any handler on its next frame.
+  const fail = useCallback((err: unknown) => {
+    const visualId = configRef.current.id;
+    const renderError = toSDMXRenderError(err, visualId);
+    if (renderError.code === 'ERR_ENGINE' && chartRef.current) {
+      chartRef.current.dispose();
+      chartRef.current = null;
+    }
+    setError(renderError);
+    setIsLoading(false);
+    onVisualRenderRef.current?.(failedRenderStatus(renderError, visualId));
+  }, [onVisualRenderRef]);
+
   useEffect(() => {
     let cancelled = false;
-    const { data, xAxisConcept } = configRef.current;
+    const currentConfig = configRef.current;
     setError(null);
-    loadDatasets(data, xAxisConcept, language)
+    onVisualRenderRef.current?.({ visualId: currentConfig.id, status: 'loading' });
+    loadDatasets(currentConfig, language, transport)
       .then((datasets) => {
         if (cancelled) return;
         setLoadedData({ key: loadKey, datasets });
       })
       .catch((err) => {
         if (cancelled) return;
-        console.error(err);
-        setError('Failed to load chart.');
-        setIsLoading(false);
+        fail(err);
       });
     return () => {
       cancelled = true;
     };
-  }, [loadKey, language]);
+  }, [loadKey, language, transport, fail, onVisualRenderRef]);
 
   useEffect(() => {
     const resolveTheme = () => {
-      if (theme) {
-        activeThemeRef.current = theme;
-        setActiveTheme(theme);
+      if (themeName) {
+        activeThemeRef.current = themeName;
+        setActiveTheme(themeName);
         return;
       }
       const darkContainer = containerRef.current?.closest('[data-bs-theme="dark"]');
@@ -298,19 +435,28 @@ const Chart = ({ config, language, placeholder, callback, theme, className, styl
       subtree: true,
     });
     return () => observer.disconnect();
-  }, [theme]);
+  }, [themeName]);
 
   const goBack = useCallback(() => {
     const chart = chartRef.current;
     if (!chart) return;
     stackRef.current.pop();
     const previous = stackRef.current[stackRef.current.length - 1] ?? baseOptionRef.current;
-    if (previous) chart.setOption(previous, { notMerge: true });
+    try {
+      if (previous) runEngine(configRef.current.id, () => chart.setOption(previous, { notMerge: true }));
+    } catch (err) {
+      fail(err);
+    }
     setCanGoBack(stackRef.current.length > 1);
     setDrilldownLabel('');
-  }, []);
+  }, [fail]);
 
-  const attachDrilldownHandler = useCallback((chart: EChartsType) => {
+  const attachChartHandlers = useCallback((chart: EChartsType) => {
+    attachInteractionHandlers(chart, () => ({
+      visualId: configRef.current.id,
+      datasets: datasetsRef.current,
+      emit: onUserInteractionRef.current,
+    }));
     chart.on('click', (params: ECElementEvent) => {
       const data = params.data as unknown as { drilldownId?: string } | undefined;
       const id = data?.drilldownId;
@@ -326,16 +472,30 @@ const Chart = ({ config, language, placeholder, callback, theme, className, styl
       // accessibility output and the save-as-image control.
       const baseOption = baseOptionRef.current;
       const withChrome = baseOption
-        ? { ...mergedChild, aria: baseOption.aria, toolbox: baseOption.toolbox }
+        ? {
+          // the theme's palette and data font are chrome too
+          ...(baseOption.color !== undefined ? { color: baseOption.color } : {}),
+          ...(baseOption.textStyle !== undefined ? { textStyle: baseOption.textStyle } : {}),
+          ...mergedChild,
+          aria: baseOption.aria,
+          toolbox: baseOption.toolbox,
+        }
         : mergedChild;
       stackRef.current.push(withChrome);
-      chart.setOption(withChrome, { notMerge: true });
-      reserveTopSpace(chart, withChrome, hasExplicitLegendTop(currentConfig));
-      reserveLegendSpace(chart, withChrome);
+      try {
+        runEngine(currentConfig.id, () => {
+          chart.setOption(withChrome, { notMerge: true });
+          reserveTopSpace(chart, withChrome, hasExplicitLegendTop(currentConfig));
+          reserveLegendSpace(chart, withChrome);
+        });
+      } catch (err) {
+        fail(err);
+        return;
+      }
       setCanGoBack(stackRef.current.length > 1);
       setDrilldownLabel(typeof params.name === 'string' ? params.name : '');
     });
-  }, []);
+  }, [fail, onUserInteractionRef]);
 
   useEffect(() => {
     if (!loadedData || loadedData.key !== loadKey) return;
@@ -354,33 +514,38 @@ const Chart = ({ config, language, placeholder, callback, theme, className, styl
       const chart = chartRef.current;
       const container = containerRef.current;
       if (!chart || !container) return;
-      chart.resize();
       const current = stackRef.current[stackRef.current.length - 1] ?? baseOptionRef.current;
-      if (current) {
-        if (
-          config.type === 'pie'
-          && applyPieRadius(current, container.clientWidth, container.clientHeight, config)
-        ) {
-          const series = (current as unknown as { series?: unknown }).series;
-          if (series) chart.setOption({ series } as unknown as EChartsOption);
-        }
-        if (applyCategoryLabelLayout(current, container.clientWidth, config.extraOptions)) {
-          const xAxis = (current as unknown as { xAxis?: unknown }).xAxis;
-          if (xAxis) chart.setOption({ xAxis } as unknown as EChartsOption);
-        }
-        if (!hasExplicitTitleLayout(config)) {
-          applyTitleWidth(current, container.clientWidth);
-          const title = (current as unknown as { title?: TitleLike | TitleLike[] }).title;
-          if (title) chart.setOption({ title } as unknown as EChartsOption);
-        }
-        reserveTopSpace(chart, current, hasExplicitLegendTop(config));
-        reserveLegendSpace(chart, current);
+      try {
+        runEngine(config.id, () => {
+          chart.resize();
+          if (!current) return;
+          if (
+            config.type === 'pie'
+            && applyPieRadius(current, container.clientWidth, container.clientHeight, config)
+          ) {
+            const series = (current as unknown as { series?: unknown }).series;
+            if (series) chart.setOption({ series } as unknown as EChartsOption);
+          }
+          if (applyCategoryLabelLayout(current, container.clientWidth, config.extraOptions)) {
+            const xAxis = (current as unknown as { xAxis?: unknown }).xAxis;
+            if (xAxis) chart.setOption({ xAxis } as unknown as EChartsOption);
+          }
+          if (!hasExplicitTitleLayout(config)) {
+            applyTitleWidth(current, container.clientWidth);
+            const title = (current as unknown as { title?: TitleLike | TitleLike[] }).title;
+            if (title) chart.setOption({ title } as unknown as EChartsOption);
+          }
+          reserveTopSpace(chart, current, hasExplicitLegendTop(config));
+          reserveLegendSpace(chart, current);
+        });
+      } catch (err) {
+        fail(err);
       }
     });
     resizeObserver.observe(container);
 
     try {
-      const built = buildChartOptionFromDatasets(config, language, loadedData.datasets);
+      const built = buildChartOptionFromDatasets(config, language, loadedData.datasets, sdmxTheme);
 
       if (!hasExplicitTitleLayout(config)) applyTitleWidth(built.option, container.clientWidth);
       const merged = mergeExtraOptions(built.option, config.extraOptions);
@@ -391,31 +556,39 @@ const Chart = ({ config, language, placeholder, callback, theme, className, styl
         applyPieRadius(merged, container.clientWidth, container.clientHeight, config);
       }
       drilldownRef.current = built.drilldown;
+      datasetsRef.current = loadedData.datasets;
       baseOptionRef.current = merged;
       stackRef.current = [merged];
 
-      const existingChart = chartRef.current;
-      const chart = existingChart ?? initChart(container, activeThemeRef.current);
-      if (!existingChart) {
-        attachDrilldownHandler(chart);
-        chartRef.current = chart;
-      }
-
-      chart.setOption(merged, { notMerge: true });
-      reserveTopSpace(chart, merged, hasExplicitLegendTop(config));
-      reserveLegendSpace(chart, merged);
+      let chart = chartRef.current;
+      runEngine(config.id, () => {
+        if (!chart) {
+          chart = initChart(container, activeThemeRef.current);
+          attachChartHandlers(chart);
+          chartRef.current = chart;
+        }
+        chart.setOption(merged, { notMerge: true });
+        reserveTopSpace(chart, merged, hasExplicitLegendTop(config));
+        reserveLegendSpace(chart, merged);
+      });
       setIsLoading(false);
-      if (callbackRef.current) callbackRef.current(chart);
+      setA11yTable(buildA11yTable(config, resolveNumberLocale(sdmxTheme, language), loadedData.datasets, built.titleText));
+      if (callbackRef.current && chart) callbackRef.current(chart);
+      onVisualRenderRef.current?.({
+        visualId: config.id,
+        status: 'rendered',
+        stats: computeRenderStats(loadedData.datasets.flatMap((dataset) => dataset.data), built.seriesCount),
+      });
     } catch (err) {
-      console.error(err);
-      setError('Failed to load chart.');
-      setIsLoading(false);
+      fail(err);
     }
 
     return () => {
       resizeObserver.disconnect();
     };
-  }, [config, language, loadKey, loadedData, attachDrilldownHandler]);
+    // config is read at its configKey; its identity alone must not re-render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configKey, sdmxThemeKey, language, loadKey, loadedData, attachChartHandlers, fail, onVisualRenderRef]);
 
   useEffect(() => () => {
     chartRef.current?.dispose();
@@ -431,19 +604,28 @@ const Chart = ({ config, language, placeholder, callback, theme, className, styl
     const current = stackRef.current[stackRef.current.length - 1] ?? baseOptionRef.current;
     if (current && !hasExplicitTitleLayout(currentConfig)) applyTitleWidth(current, container.clientWidth);
     chart.dispose();
-    const nextChart = initChart(container, activeTheme);
-    attachDrilldownHandler(nextChart);
-    chartRef.current = nextChart;
-    if (current) {
-      nextChart.setOption(current, { notMerge: true });
-      reserveTopSpace(nextChart, current, hasExplicitLegendTop(currentConfig));
-      reserveLegendSpace(nextChart, current);
+    try {
+      runEngine(currentConfig.id, () => {
+        const nextChart = initChart(container, activeTheme);
+        attachChartHandlers(nextChart);
+        chartRef.current = nextChart;
+        if (current) {
+          nextChart.setOption(current, { notMerge: true });
+          reserveTopSpace(nextChart, current, hasExplicitLegendTop(currentConfig));
+          reserveLegendSpace(nextChart, current);
+        }
+      });
+    } catch (err) {
+      fail(err);
+      return;
     }
-    if (callbackRef.current) callbackRef.current(nextChart);
-  }, [activeTheme, attachDrilldownHandler]);
+    if (callbackRef.current && chartRef.current) callbackRef.current(chartRef.current);
+  }, [activeTheme, attachChartHandlers, fail]);
 
   const isDarkTheme = activeTheme === 'dark';
   const hasHeader = !isLoading && !error && canGoBack;
+  const failed = !isLoading && error !== null;
+  const errorSlot = error ? failureSlot(error, config.id, { renderEmpty, renderError }) : undefined;
 
   const chartNode: React.ReactNode = (
     <div
@@ -477,7 +659,9 @@ const Chart = ({ config, language, placeholder, callback, theme, className, styl
           {drilldownLabel && <span className="fw-semibold">{drilldownLabel}</span>}
         </div>
       )}
-      <div style={{ position: 'relative' }}>
+      {/* a failed chart collapses its box (kept at its size, so the
+          instance needs no resize) and the panel sizes to its message */}
+      <div style={failed ? { position: 'relative', height: 0, overflow: 'hidden' } : { position: 'relative' }}>
         {config.dataLink ? (
           <a href={config.dataLink} target="_blank" rel="noreferrer">
             {chartNode}
@@ -487,19 +671,26 @@ const Chart = ({ config, language, placeholder, callback, theme, className, styl
         )}
         {isLoading && (
           <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center">
-            {placeholder || (
+            {(renderLoading ? renderLoading(config.id) : placeholder) || (
               <div className="opacity-50 d-table-cell align-middle" style={{ height: 400, width: 600 }}>
                 Loading...
               </div>
             )}
           </div>
         )}
-        {!isLoading && error && (
-          <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center text-danger">
-            Failed to load chart.
-          </div>
-        )}
       </div>
+      {failed && errorSlot !== undefined && errorSlot}
+      {failed && error && errorSlot === undefined && (
+        <div
+          className="sdmx-render-error d-flex align-items-center justify-content-center text-danger"
+          style={{ padding: '1rem', textAlign: 'center', minHeight: ERROR_PANEL_MIN_HEIGHT }}
+          role="alert"
+          data-error-code={error.code}
+        >
+          {error.message}
+        </div>
+      )}
+      {!isLoading && !error && a11yTable && <HiddenDataTable model={a11yTable.model} caption={a11yTable.caption} />}
     </>
   );
 
