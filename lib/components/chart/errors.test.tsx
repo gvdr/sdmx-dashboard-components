@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import Chart from './index';
-import type { SDMXChartConfig } from '../types';
+import type { SDMXChartConfig, VisualRenderStatus } from '../types';
 
 afterEach(() => {
     cleanup();
@@ -151,6 +151,22 @@ describe('chart error surfacing', () => {
         const alert = await screen.findByRole('alert');
         expect(alert.getAttribute('data-error-code')).toBe('ERR_EMPTY');
         expect(alert.textContent).toContain('The data query for visual test-bar returned zero observations.');
+    });
+
+    it('reports status "empty" with ERR_EMPTY when the parser finds no records', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => {
+            throw Object.assign(new Error('No records found'), { code: 'NO_RECORDS' });
+        }));
+        const statuses: VisualRenderStatus[] = [];
+
+        render(<Chart config={barConfig()} language="en" onVisualRender={(s) => statuses.push(s)} />);
+
+        const alert = await screen.findByRole('alert');
+        expect(alert.getAttribute('data-error-code')).toBe('ERR_EMPTY');
+        await waitFor(() => expect(statuses.map((s) => s.status)).toContain('empty'));
+        const empty = statuses.find((s) => s.status === 'empty');
+        expect(empty?.visualId).toBe('test-bar');
+        expect(empty?.error?.code).toBe('ERR_EMPTY');
     });
 
     it('renders ERR_ENGINE when the charting engine throws', async () => {
