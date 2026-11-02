@@ -35,7 +35,11 @@ const Value = ({ config, placeholder, callback, language, onVisualRender, fetche
 
     const containerRef = useRef<HTMLDivElement>(null);
     const onVisualRenderRef = useLatest(onVisualRender);
-    const transport = useTransport(fetcher, onDataFetch, language);
+    // the same load key as the chart: a new data URL, language or x-axis
+    // concept gets a fresh transport and so a fresh request; any other config
+    // change re-renders from the transport's cache
+    const loadKey = `${JSON.stringify(config.data)}|${language}|${config.xAxisConcept ?? ''}`;
+    const transport = useTransport(fetcher, onDataFetch, loadKey);
 
     // className is applied to container div
     // style is applied to value div
@@ -52,6 +56,8 @@ const Value = ({ config, placeholder, callback, language, onVisualRender, fetche
     if (config.adaptiveTextSize || containerClass.indexOf("adaptive-text-size") > -1) {
         config.adaptiveTextSize = true;
     }
+    // after the in-place default above, so that default does not change the key
+    const configKey = JSON.stringify(config);
 
     // create valueDivWidth variable as a string or number, and store the width of the value div
     // this will be either a percentage or a number of pixels
@@ -248,8 +254,9 @@ const Value = ({ config, placeholder, callback, language, onVisualRender, fetche
         return () => {
             cancelled = true;
         };
+        // config is read at its configKey; its identity alone must not refetch
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [language, transport]);
+    }, [configKey, language, transport]);
 
     const valueNode: React.ReactNode =
         <div className="value-node d-flex flex-column h-100">
